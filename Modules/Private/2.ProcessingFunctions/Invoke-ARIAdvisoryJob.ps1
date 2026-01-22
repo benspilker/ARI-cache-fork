@@ -27,7 +27,15 @@ function Invoke-ARIAdvisoryJob {
 
                 import-module $($args[1])
 
-                $AdvResult = Start-ARIAdvisoryJob -Advisories $($args[0])
+                # Ensure Advisories is an array after job serialization (arrays can become null or lose type)
+                $AdvParam = $($args[0])
+                if ($null -eq $AdvParam) {
+                    $AdvParam = @()
+                } elseif ($AdvParam -isnot [System.Array]) {
+                    $AdvParam = @($AdvParam)
+                }
+
+                $AdvResult = Start-ARIAdvisoryJob -Advisories $AdvParam
 
                 $AdvResult
 
@@ -40,7 +48,15 @@ function Invoke-ARIAdvisoryJob {
 
                 import-module $($args[1])
 
-                $AdvResult = Start-ARIAdvisoryJob -Advisories $($args[0])
+                # Ensure Advisories is an array after job serialization (arrays can become null or lose type)
+                $AdvParam = $($args[0])
+                if ($null -eq $AdvParam) {
+                    $AdvParam = @()
+                } elseif ($AdvParam -isnot [System.Array]) {
+                    $AdvParam = @($AdvParam)
+                }
+
+                $AdvResult = Start-ARIAdvisoryJob -Advisories $AdvParam
 
                 $AdvResult
 

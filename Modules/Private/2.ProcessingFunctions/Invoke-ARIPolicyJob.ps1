@@ -27,7 +27,32 @@ function Invoke-ARIPolicyJob {
 
                 import-module $($args[4])
 
-                $PolResult = Start-ARIPolicyJob -Subscriptions $($args[0]) -PolicySetDef $($args[1]) -PolicyAssign $($args[2]) -PolicyDef $($args[3])
+                # Ensure variables are arrays after job serialization (arrays can become null or lose type)
+                $SubsParam = $($args[0])
+                if ($null -eq $SubsParam) {
+                    $SubsParam = @()
+                } elseif ($SubsParam -isnot [System.Array]) {
+                    $SubsParam = @($SubsParam)
+                }
+                
+                $PolicySetDefParam = $($args[1])
+                if ($null -eq $PolicySetDefParam) {
+                    $PolicySetDefParam = @()
+                } elseif ($PolicySetDefParam -isnot [System.Array]) {
+                    $PolicySetDefParam = @($PolicySetDefParam)
+                }
+                
+                $PolicyAssignParam = $($args[2])
+                # PolicyAssign can be PSCustomObject, Hashtable, or Array - preserve as-is
+                
+                $PolicyDefParam = $($args[3])
+                if ($null -eq $PolicyDefParam) {
+                    $PolicyDefParam = @()
+                } elseif ($PolicyDefParam -isnot [System.Array]) {
+                    $PolicyDefParam = @($PolicyDefParam)
+                }
+
+                $PolResult = Start-ARIPolicyJob -Subscriptions $SubsParam -PolicySetDef $PolicySetDefParam -PolicyAssign $PolicyAssignParam -PolicyDef $PolicyDefParam
 
                 $PolResult
 
@@ -40,7 +65,32 @@ function Invoke-ARIPolicyJob {
 
                 import-module $($args[4])
 
-                $PolResult = Start-ARIPolicyJob -Subscriptions $($args[0]) -PolicySetDef $($args[1]) -PolicyAssign $($args[2]) -PolicyDef $($args[3])
+                # Ensure variables are arrays after job serialization (arrays can become null or lose type)
+                $SubsParam = $($args[0])
+                if ($null -eq $SubsParam) {
+                    $SubsParam = @()
+                } elseif ($SubsParam -isnot [System.Array]) {
+                    $SubsParam = @($SubsParam)
+                }
+                
+                $PolicySetDefParam = $($args[1])
+                if ($null -eq $PolicySetDefParam) {
+                    $PolicySetDefParam = @()
+                } elseif ($PolicySetDefParam -isnot [System.Array]) {
+                    $PolicySetDefParam = @($PolicySetDefParam)
+                }
+                
+                $PolicyAssignParam = $($args[2])
+                # PolicyAssign can be PSCustomObject, Hashtable, or Array - preserve as-is
+                
+                $PolicyDefParam = $($args[3])
+                if ($null -eq $PolicyDefParam) {
+                    $PolicyDefParam = @()
+                } elseif ($PolicyDefParam -isnot [System.Array]) {
+                    $PolicyDefParam = @($PolicyDefParam)
+                }
+
+                $PolResult = Start-ARIPolicyJob -Subscriptions $SubsParam -PolicySetDef $PolicySetDefParam -PolicyAssign $PolicyAssignParam -PolicyDef $PolicyDefParam
 
                 $PolResult
 

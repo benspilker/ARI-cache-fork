@@ -93,7 +93,28 @@ function Start-ARIExtraJobs {
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Checking If Should Run Policy Job.')
     if (!$SkipPolicy.IsPresent) {
-        if (![string]::IsNullOrEmpty($PolicyAssign) -and ![string]::IsNullOrEmpty($PolicyDef))
+        # Safely check PolicyAssign and PolicyDef (can be arrays, PSCustomObject, Hashtable, or null)
+        $hasPolicyAssign = $false
+        if ($null -ne $PolicyAssign) {
+            if ($PolicyAssign -is [System.Array]) {
+                $hasPolicyAssign = $PolicyAssign.Count -gt 0
+            } elseif ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
+                $hasPolicyAssign = $null -ne $PolicyAssign.policyAssignments
+            } else {
+                $hasPolicyAssign = $true
+            }
+        }
+        
+        $hasPolicyDef = $false
+        if ($null -ne $PolicyDef) {
+            if ($PolicyDef -is [System.Array]) {
+                $hasPolicyDef = $PolicyDef.Count -gt 0
+            } else {
+                $hasPolicyDef = $true
+            }
+        }
+        
+        if ($hasPolicyAssign -and $hasPolicyDef)
             {
                 # PATCHED: Wait for resource processing jobs to complete before starting Policy job
                 # This prevents exceeding Windmill's concurrent job limits
@@ -117,7 +138,17 @@ function Start-ARIExtraJobs {
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Checking If Should Run Advisory Job.')
     if (!$SkipAdvisory.IsPresent) {
-        if (![string]::IsNullOrEmpty($Advisories))
+        # Safely check Advisories (can be array or null)
+        $hasAdvisories = $false
+        if ($null -ne $Advisories) {
+            if ($Advisories -is [System.Array]) {
+                $hasAdvisories = $Advisories.Count -gt 0
+            } else {
+                $hasAdvisories = $true
+            }
+        }
+        
+        if ($hasAdvisories)
             {
                 # PATCHED: Wait for resource processing jobs to complete before starting Advisory job
                 # This prevents exceeding Windmill's concurrent job limits

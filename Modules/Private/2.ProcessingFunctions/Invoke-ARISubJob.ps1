@@ -27,7 +27,22 @@ function Invoke-ARISubJob {
 
                 import-module $($args[2])
 
-                $SubResult = Start-ARISubscriptionJob -Subscriptions $($args[0]) -Resources $($args[1]) -CostData $($args[3])
+                # Ensure variables are arrays after job serialization (arrays can become null or lose type)
+                $SubsParam = $($args[0])
+                if ($null -eq $SubsParam) {
+                    $SubsParam = @()
+                } elseif ($SubsParam -isnot [System.Array]) {
+                    $SubsParam = @($SubsParam)
+                }
+                
+                $ResParam = $($args[1])
+                if ($null -eq $ResParam) {
+                    $ResParam = @()
+                } elseif ($ResParam -isnot [System.Array]) {
+                    $ResParam = @($ResParam)
+                }
+
+                $SubResult = Start-ARISubscriptionJob -Subscriptions $SubsParam -Resources $ResParam -CostData $($args[3])
 
                 $SubResult
 
@@ -40,7 +55,22 @@ function Invoke-ARISubJob {
 
                 import-module $($args[2])
 
-                $SubResult = Start-ARISubscriptionJob -Subscriptions $($args[0]) -Resources $($args[1]) -CostData $($args[3])
+                # Ensure variables are arrays after job serialization (arrays can become null or lose type)
+                $SubsParam = $($args[0])
+                if ($null -eq $SubsParam) {
+                    $SubsParam = @()
+                } elseif ($SubsParam -isnot [System.Array]) {
+                    $SubsParam = @($SubsParam)
+                }
+                
+                $ResParam = $($args[1])
+                if ($null -eq $ResParam) {
+                    $ResParam = @()
+                } elseif ($ResParam -isnot [System.Array]) {
+                    $ResParam = @($ResParam)
+                }
+
+                $SubResult = Start-ARISubscriptionJob -Subscriptions $SubsParam -Resources $ResParam -CostData $($args[3])
 
                 $SubResult
 
