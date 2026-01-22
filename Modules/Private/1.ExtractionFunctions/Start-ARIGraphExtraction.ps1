@@ -43,7 +43,14 @@ Function Start-ARIGraphExtraction {
             $Subscriptions = Get-ARIManagementGroups -ManagementGroup $ManagementGroup -Subscriptions $Subscriptions
         }
 
-    $SubCount = [string]$Subscriptions.id.count
+    # Safely access Subscriptions.id.count - handle null/empty cases
+    if ($null -ne $Subscriptions -and $null -ne $Subscriptions.id) {
+        $SubCount = [string]$Subscriptions.id.count
+    } elseif ($null -ne $Subscriptions -and $Subscriptions -is [System.Array]) {
+        $SubCount = [string]$Subscriptions.Count
+    } else {
+        $SubCount = "0"
+    }
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Number of Subscriptions Found: ' + $SubCount)
     Write-Progress -activity 'Azure Inventory' -Status "3% Complete." -PercentComplete 3 -CurrentOperation "$SubCount Subscriptions found.."
@@ -62,7 +69,15 @@ Function Start-ARIGraphExtraction {
         }
     else
         {
-            $Subscri = $Subscriptions.id
+            # Safely access Subscriptions.id - handle null/empty cases
+            if ($null -ne $Subscriptions -and $null -ne $Subscriptions.id) {
+                $Subscri = $Subscriptions.id
+            } elseif ($null -ne $Subscriptions -and $Subscriptions -is [System.Array]) {
+                # If Subscriptions is an array, extract id property from each
+                $Subscri = $Subscriptions | ForEach-Object { if ($null -ne $_.id) { $_.id } } | Where-Object { $_ -ne $null }
+            } else {
+                $Subscri = @()
+            }
             $RGQueryExtension = ''
             $TagQueryExtension = ''
             $MGQueryExtension = ''
@@ -94,40 +109,66 @@ Function Start-ARIGraphExtraction {
 
             $ExcludedTypes = "| where type !in ('microsoft.logic/workflows','microsoft.portal/dashboards','microsoft.resources/templatespecs/versions','microsoft.resources/templatespecs')"
 
+            # Initialize Resources array if not already initialized
+            if ($null -eq $Resources) {
+                $Resources = @()
+            }
+
             $GraphQuery = "resources $RGQueryExtension $TagQueryExtension $MGQueryExtension $ExcludedTypes | project id,name,type,tenantId,kind,location,resourceGroup,subscriptionId,managedBy,sku,plan,properties,identity,zones,extendedLocation$($GraphQueryTags) | order by id asc"
 
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Invoking Inventory Loop for Resources')
-            $Resources += Invoke-ARIInventoryLoop -GraphQuery $GraphQuery -FSubscri $Subscri -LoopName 'Resources'
+            $loopResult = Invoke-ARIInventoryLoop -GraphQuery $GraphQuery -FSubscri $Subscri -LoopName 'Resources'
+            if ($null -ne $loopResult) {
+                $Resources += $loopResult
+            }
 
             $GraphQuery = "networkresources $RGQueryExtension $TagQueryExtension $MGQueryExtension | project id,name,type,tenantId,kind,location,resourceGroup,subscriptionId,managedBy,sku,plan,properties,identity,zones,extendedLocation$($GraphQueryTags) | order by id asc"
 
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Invoking Inventory Loop for Network Resources')
-            $Resources += Invoke-ARIInventoryLoop -GraphQuery $GraphQuery -FSubscri $Subscri -LoopName 'Network Resources'
+            $loopResult = Invoke-ARIInventoryLoop -GraphQuery $GraphQuery -FSubscri $Subscri -LoopName 'Network Resources'
+            if ($null -ne $loopResult) {
+                $Resources += $loopResult
+            }
 
             if ($AzureEnvironment -ne 'AzureUSGovernment')
                 {
                     $GraphQuery = "SupportResources $RGQueryExtension $TagQueryExtension $MGQueryExtension | project id,name,type,tenantId,kind,location,resourceGroup,subscriptionId,managedBy,sku,plan,properties,identity,zones,extendedLocation$($GraphQueryTags) | order by id asc"
 
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Invoking Inventory Loop for Support Tickets')
-                    $Resources += Invoke-ARIInventoryLoop -GraphQuery $GraphQuery -FSubscri $Subscri -LoopName 'SupportTickets'
+                    $loopResult = Invoke-ARIInventoryLoop -GraphQuery $GraphQuery -FSubscri $Subscri -LoopName 'SupportTickets'
+                    if ($null -ne $loopResult) {
+                        $Resources += $loopResult
+                    }
                 }
 
             $GraphQuery = "recoveryservicesresources $RGQueryExtension $TagQueryExtension | where type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems' or type =~ 'microsoft.recoveryservices/vaults/backuppolicies' $MGQueryExtension  | project id,name,type,tenantId,kind,location,resourceGroup,subscriptionId,managedBy,sku,plan,properties,identity,zones,extendedLocation$($GraphQueryTags) | order by id asc"
 
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Invoking Inventory Loop for Backup Resources')
-            $Resources += Invoke-ARIInventoryLoop -GraphQuery $GraphQuery -FSubscri $Subscri -LoopName 'Backup Items'
+            $loopResult = Invoke-ARIInventoryLoop -GraphQuery $GraphQuery -FSubscri $Subscri -LoopName 'Backup Items'
+            if ($null -ne $loopResult) {
+                $Resources += $loopResult
+            }
 
             $GraphQuery = "desktopvirtualizationresources $RGQueryExtension $MGQueryExtension| project id,name,type,tenantId,kind,location,resourceGroup,subscriptionId,managedBy,sku,plan,properties,identity,zones,extendedLocation$($GraphQueryTags) | order by id asc"
 
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Invoking Inventory Loop for AVD Resources')
-            $Resources += Invoke-ARIInventoryLoop -GraphQuery $GraphQuery -FSubscri $Subscri -LoopName 'Virtual Desktop'
+            $loopResult = Invoke-ARIInventoryLoop -GraphQuery $GraphQuery -FSubscri $Subscri -LoopName 'Virtual Desktop'
+            if ($null -ne $loopResult) {
+                $Resources += $loopResult
+            }
 
             $GraphQuery = "resourcecontainers $RGQueryExtension $TagQueryExtension $MGContainerExtension | project id,name,type,tenantId,kind,location,resourceGroup,subscriptionId,managedBy,sku,plan,properties,identity,zones,extendedLocation$($GraphQueryTags) | order by id asc"
 
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Invoking Inventory Loop for Resource Containers')
             $ResourceContainers = Invoke-ARIInventoryLoop -GraphQuery $GraphQuery -FSubscri $Subscri -LoopName 'Subscriptions and Resource Groups'
 
-            $ContainerCount = $ResourceContainers.count
+            # Safely access ResourceContainers.count - handle null/empty cases
+            if ($null -ne $ResourceContainers) {
+                $ContainerCount = $ResourceContainers.count
+            } else {
+                $ContainerCount = 0
+                $ResourceContainers = @()
+            }
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Number of Resource Containers: '+ $ContainerCount)
 
             if (!($SkipAdvisory.IsPresent))
@@ -137,7 +178,13 @@ Function Start-ARIGraphExtraction {
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Invoking Inventory Loop for Advisories')
                     $Advisories = Invoke-ARIInventoryLoop -GraphQuery $GraphQuery -FSubscri $Subscri -LoopName 'Advisories'
 
-                    $AdvisorCount = $Advisories.count
+                    # Safely access Advisories.count - handle null/empty cases
+                    if ($null -ne $Advisories) {
+                        $AdvisorCount = $Advisories.count
+                    } else {
+                        $AdvisorCount = 0
+                        $Advisories = @()
+                    }
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Number of Advisors: '+ $AdvisorCount)
                 }
             if ($SecurityCenter.IsPresent)
@@ -147,8 +194,17 @@ Function Start-ARIGraphExtraction {
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Invoking Inventory Loop for Security Resources')
                     $Security = Invoke-ARIInventoryLoop -GraphQuery $GraphQuery -FSubscri $Subscri -LoopName 'Security Center'
 
-                    $SecurityCount = $Security.count
+                    # Safely access Security.count - handle null/empty cases
+                    if ($null -ne $Security) {
+                        $SecurityCount = $Security.count
+                    } else {
+                        $SecurityCount = 0
+                        $Security = @()
+                    }
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Number of Security Center Advisors: '+ $SecurityCount)
+                } else {
+                    # Initialize Security as empty array if SecurityCenter is not present
+                    $Security = @()
                 }
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Invoking Inventory Loop for Retirements')
@@ -161,11 +217,24 @@ Function Start-ARIGraphExtraction {
 
     $ResourceRetirements = Invoke-ARIInventoryLoop -GraphQuery $RetirementQuery -FSubscri $Subscri -LoopName 'Retirements'
 
-    $RetirementCount = $ResourceRetirements.count
+    # Safely access ResourceRetirements.count - handle null/empty cases
+    if ($null -ne $ResourceRetirements) {
+        $RetirementCount = $ResourceRetirements.count
+    } else {
+        $RetirementCount = 0
+        $ResourceRetirements = @()
+    }
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Number of Retirements: '+ $RetirementCount)
 
     Write-Progress -activity 'Azure Inventory' -PercentComplete 10
+
+    # Ensure all return values are arrays (not null) to prevent .count errors
+    if ($null -eq $Resources) { $Resources = @() }
+    if ($null -eq $ResourceContainers) { $ResourceContainers = @() }
+    if ($null -eq $Advisories) { $Advisories = @() }
+    if ($null -eq $Security) { $Security = @() }
+    if ($null -eq $ResourceRetirements) { $ResourceRetirements = @() }
 
     $tmp = [PSCustomObject]@{
         Resources              = $Resources
