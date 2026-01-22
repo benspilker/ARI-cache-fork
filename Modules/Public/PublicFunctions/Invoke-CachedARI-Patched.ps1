@@ -845,7 +845,6 @@ Function Invoke-CachedARI-Patched {
         $ExtractionTotalTime = "00:00:00:000"
         
         Write-Host "[UseExistingCache] Completed cache loading and Policy/Advisor collection" -ForegroundColor Green
-    }
     } else {
         Clear-ARICacheFolder -ReportCache $ReportCache
 
