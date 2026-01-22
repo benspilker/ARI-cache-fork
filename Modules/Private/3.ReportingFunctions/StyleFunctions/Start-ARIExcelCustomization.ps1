@@ -44,27 +44,49 @@ function Start-ARIExcelCustomization {
     Start-ARIExcelOrdening -File $File
 
     $Excel = Open-ExcelPackage -Path $File
-    $Worksheets = $Excel.Workbook.Worksheets
+    # Safely access Worksheets - ensure it's always an array
+    $Worksheets = if ($null -ne $Excel -and $null -ne $Excel.Workbook -and $null -ne $Excel.Workbook.Worksheets) { 
+        $Excel.Workbook.Worksheets 
+    } else { 
+        @() 
+    }
+    # Ensure Worksheets is an array
+    if ($null -eq $Worksheets) {
+        $Worksheets = @()
+    } elseif ($Worksheets -isnot [System.Array]) {
+        $Worksheets = @($Worksheets)
+    }
 
     $TotalRes = 0
-    $Table = Foreach ($WorkS in $Worksheets) {
-        # Safely check if worksheet has tables and Name property exists
-        if ($null -ne $WorkS -and $null -ne $WorkS.Tables -and $WorkS.Tables.Count -gt 0 -and $null -ne $WorkS.Tables[0] -and $null -ne $WorkS.Tables[0].Name -and ![string]::IsNullOrEmpty($WorkS.Tables[0].Name))
-            {
-                $Number = $WorkS.Tables[0].Name.split('_')
-                if ($Number.Count -ge 2) {
-                    $tmp = @{
-                        'Name' = if ($null -ne $WorkS.name) { $WorkS.name } else { '' };
-                        'Size' = [int]$Number[1];
-                        'Size2' = if ($null -ne $WorkS.name -and $WorkS.name -in ('Subscriptions', 'Quota Usage', 'AdvisorScore', 'Outages', 'SupportTickets', 'Reservation Advisor')) {0}else{[int]$Number[1]}
-                    }
-                    if ($null -ne $WorkS.name -and $WorkS.name -notin ('Subscriptions', 'Quota Usage', 'AdvisorScore', 'Outages', 'SupportTickets', 'Reservation Advisor', 'Managed Identity', 'Backup'))
-                        {
-                            $TotalRes = $TotalRes + ([int]$Number[1])
+    # Initialize Table as empty array to ensure it's always an array
+    $Table = @()
+    if ($null -ne $Worksheets) {
+        $Table = Foreach ($WorkS in $Worksheets) {
+            # Safely check if worksheet has tables and Name property exists
+            if ($null -ne $WorkS -and $null -ne $WorkS.Tables -and $WorkS.Tables.Count -gt 0 -and $null -ne $WorkS.Tables[0] -and $null -ne $WorkS.Tables[0].Name -and ![string]::IsNullOrEmpty($WorkS.Tables[0].Name))
+                {
+                    $Number = $WorkS.Tables[0].Name.split('_')
+                    # Safely check if Number is an array and has at least 2 elements
+                    if ($null -ne $Number -and $Number -is [System.Array] -and $Number.Count -ge 2) {
+                        $tmp = @{
+                            'Name' = if ($null -ne $WorkS.name) { $WorkS.name } else { '' };
+                            'Size' = [int]$Number[1];
+                            'Size2' = if ($null -ne $WorkS.name -and $WorkS.name -in ('Subscriptions', 'Quota Usage', 'AdvisorScore', 'Outages', 'SupportTickets', 'Reservation Advisor')) {0}else{[int]$Number[1]}
                         }
-                    $tmp
+                        if ($null -ne $WorkS.name -and $WorkS.name -notin ('Subscriptions', 'Quota Usage', 'AdvisorScore', 'Outages', 'SupportTickets', 'Reservation Advisor', 'Managed Identity', 'Backup'))
+                            {
+                                $TotalRes = $TotalRes + ([int]$Number[1])
+                            }
+                        $tmp
+                    }
                 }
-            }
+        }
+        # Ensure Table is an array (foreach might return null if empty)
+        if ($null -eq $Table) {
+            $Table = @()
+        } elseif ($Table -isnot [System.Array]) {
+            $Table = @($Table)
+        }
     }
 
     Close-ExcelPackage $Excel
