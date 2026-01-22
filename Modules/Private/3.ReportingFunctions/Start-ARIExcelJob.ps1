@@ -22,11 +22,19 @@ function Start-ARIExcelJob {
 
     $ParentPath = (get-item $PSScriptRoot).parent.parent
     $InventoryModulesPath = Join-Path $ParentPath 'Public' 'InventoryModules'
-    $ModuleFolders = Get-ChildItem -Path $InventoryModulesPath -Directory
+    
+    # Safely get module folders - ensure it's always an array
+    $ModuleFolders = @(Get-ChildItem -Path $InventoryModulesPath -Directory -ErrorAction SilentlyContinue)
+    if ($null -eq $ModuleFolders -or $ModuleFolders.Count -eq 0) {
+        Write-Warning "No module folders found in $InventoryModulesPath"
+        $ModuleFolders = @()
+    }
 
     Write-Progress -activity 'Azure Inventory' -Status "68% Complete." -PercentComplete 68 -CurrentOperation "Starting the Report Loop.."
 
-    $ModulesCount = [string](Get-ChildItem -Path $InventoryModulesPath -Recurse -Filter "*.ps1").count
+    # Safely get module count - handle null or empty results
+    $moduleFiles = @(Get-ChildItem -Path $InventoryModulesPath -Recurse -Filter "*.ps1" -ErrorAction SilentlyContinue)
+    $ModulesCount = if ($null -ne $moduleFiles -and $moduleFiles.Count -gt 0) { [string]$moduleFiles.Count } else { "0" }
 
     Write-Output 'Starting to Build Excel Report.'
     Write-Host 'Supported Resource Types: ' -NoNewline -ForegroundColor Green
@@ -35,13 +43,23 @@ function Start-ARIExcelJob {
     $Lops = $ModulesCount
     $ReportCounter = 0
 
-    Foreach ($ModuleFolder in $ModuleFolders)
+        Foreach ($ModuleFolder in $ModuleFolders)
         {
             $CacheData = $null
             $ModulePath = Join-Path $ModuleFolder.FullName '*.ps1'
-            $ModuleFiles = Get-ChildItem -Path $ModulePath
+            
+            # Safely get module files - ensure it's always an array
+            $ModuleFiles = @(Get-ChildItem -Path $ModulePath -ErrorAction SilentlyContinue)
+            if ($null -eq $ModuleFiles) {
+                $ModuleFiles = @()
+            }
 
-            $CacheFiles = Get-ChildItem -Path $ReportCache -Recurse
+            # Safely get cache files - ensure it's always an array
+            $CacheFiles = @(Get-ChildItem -Path $ReportCache -Recurse -ErrorAction SilentlyContinue)
+            if ($null -eq $CacheFiles) {
+                $CacheFiles = @()
+            }
+            
             $JSONFileName = ($ModuleFolder.Name + '.json')
             $CacheFile = $CacheFiles | Where-Object { $_.Name -like "*$JSONFileName" }
 

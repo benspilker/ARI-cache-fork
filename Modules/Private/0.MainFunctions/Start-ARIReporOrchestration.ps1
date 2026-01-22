@@ -33,17 +33,35 @@ Function Start-ARIReporOrchestration {
     <############################################################## REPORT CREATION ###################################################################>
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Starting Resource Reporting Cache.')
-    Start-ARIExcelJob -ReportCache $ReportCache -TableStyle $TableStyle -File $File
+    try {
+        Start-ARIExcelJob -ReportCache $ReportCache -TableStyle $TableStyle -File $File
+    } catch {
+        Write-Error "Error in Start-ARIExcelJob: $($_.Exception.Message)"
+        Write-Error "Stack trace: $($_.ScriptStackTrace)"
+        throw
+    }
 
     <############################################################## REPORT EXTRA DETAILS ###################################################################>
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Starting Reporting Extra Details.')
-    Start-ARIExcelExtraData -File $File
+    try {
+        Start-ARIExcelExtraData -File $File
+    } catch {
+        Write-Error "Error in Start-ARIExcelExtraData: $($_.Exception.Message)"
+        Write-Error "Stack trace: $($_.ScriptStackTrace)"
+        throw
+    }
 
     <############################################################## EXTRA REPORTS ###################################################################>
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Starting Default Data Reporting.')
 
-    Start-ARIExtraReports -File $File -Quotas $Quotas -SecurityCenter $SecurityCenter -SkipPolicy $SkipPolicy -SkipAdvisory $SkipAdvisory -IncludeCosts $IncludeCosts -TableStyle $TableStyle
+    try {
+        Start-ARIExtraReports -File $File -Quotas $Quotas -SecurityCenter $SecurityCenter -SkipPolicy $SkipPolicy -SkipAdvisory $SkipAdvisory -IncludeCosts $IncludeCosts -TableStyle $TableStyle
+    } catch {
+        Write-Error "Error in Start-ARIExtraReports: $($_.Exception.Message)"
+        Write-Error "Stack trace: $($_.ScriptStackTrace)"
+        throw
+    }
 
 }

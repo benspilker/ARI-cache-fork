@@ -906,7 +906,16 @@ Function Invoke-CachedARI-Patched {
 
         $ReportingRunTime = [System.Diagnostics.Stopwatch]::StartNew()
 
+        try {
             Start-ARIReporOrchestration -ReportCache $ReportCache -SecurityCenter $SecurityCenter -File $File -Quotas $Quotas -SkipPolicy $SkipPolicy -SkipAdvisory $SkipAdvisory -IncludeCosts $IncludeCosts -Automation $Automation -TableStyle $TableStyle
+        } catch {
+            $errorDetails = $_.Exception.Message
+            $errorLine = $_.InvocationInfo.ScriptLineNumber
+            $errorFunction = $_.InvocationInfo.FunctionName
+            Write-Error "Excel generation failed in $errorFunction at line $errorLine : $errorDetails"
+            Write-Error "Stack trace: $($_.ScriptStackTrace)"
+            throw
+        }
 
         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Generating Overview sheet (Charts).')
 
