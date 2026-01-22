@@ -20,6 +20,13 @@ Authors: Claudio Merola
 function Start-ARIAdvisoryJob {
     param($Advisories)
 
+    # Ensure Advisories is an array for safe iteration
+    if ($null -eq $Advisories) {
+        $Advisories = @()
+    } elseif ($Advisories -isnot [System.Array]) {
+        $Advisories = @($Advisories)
+    }
+
     $tmp = foreach ($1 in $Advisories)
         {
             $data = $1.PROPERTIES
@@ -74,6 +81,12 @@ function Start-ARIAdvisoryJob {
                     $obj
                 }
         }
+    # Ensure tmp is always an array (foreach might return null if empty)
+    if ($null -eq $tmp) {
+        $tmp = @()
+    } elseif ($tmp -isnot [System.Array]) {
+        $tmp = @($tmp)
+    }
     $tmp
 }
 

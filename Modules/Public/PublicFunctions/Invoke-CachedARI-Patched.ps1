@@ -419,7 +419,22 @@ Function Invoke-CachedARI-Patched {
                     # Policy cache file contains processed Policy job results (array of policy records)
                     # We need to recreate PolicyAssign, PolicyDef, PolicySetDef from this
                     # For now, mark that we have Policy data and it will be processed via Start-ARIExtraJobs
-                    Write-Host "[UseExistingCache] Loaded Policy cache file ($($policyCacheData.Count) policy record(s))" -ForegroundColor Green
+                    # Safely get count - handle array, PSCustomObject, or other types
+                    $policyCacheCount = 0
+                    if ($null -ne $policyCacheData) {
+                        if ($policyCacheData -is [System.Array]) {
+                            $policyCacheCount = $policyCacheData.Count
+                        } elseif ($policyCacheData -is [PSCustomObject]) {
+                            $policyCacheCount = 1
+                        } else {
+                            try {
+                                $policyCacheCount = $policyCacheData.Count
+                            } catch {
+                                $policyCacheCount = 1
+                            }
+                        }
+                    }
+                    Write-Host "[UseExistingCache] Loaded Policy cache file ($policyCacheCount policy record(s))" -ForegroundColor Green
                     # Policy data will be loaded when Start-ARIExtraJobs processes the Policy job
                 } catch {
                     Write-Host "[UseExistingCache] Warning: Failed to load Policy cache file: $_" -ForegroundColor Yellow
@@ -621,7 +636,9 @@ Function Invoke-CachedARI-Patched {
             Write-Host "[UseExistingCache] Collecting Policy and Advisor data via API calls..." -ForegroundColor Yellow
             
             # Collect Advisor data if not skipped AND not already loaded from cache
-            if (-not $skipAdvisoryValue -and ($null -eq $Advisories -or $Advisories.Count -eq 0)) {
+            # Safely check Advisories.Count
+            $advisoriesCount = if ($null -ne $Advisories -and $Advisories -is [System.Array]) { $Advisories.Count } elseif ($null -ne $Advisories) { 1 } else { 0 }
+            if (-not $skipAdvisoryValue -and $advisoriesCount -eq 0) {
                 Write-Host "[UseExistingCache] Collecting Advisor data via API (cache file not found)..." -ForegroundColor Cyan
                 
                 # Aggressive memory cleanup BEFORE Advisor API call
@@ -636,12 +653,14 @@ Function Invoke-CachedARI-Patched {
                     $skipAdvisorySwitch = [switch]$false
                     $GraphData = Start-ARIGraphExtraction -ManagementGroup $null -Subscriptions $Subscriptions -SubscriptionID $SubscriptionID -ResourceGroup $null -SecurityCenter $SecurityCenter -SkipAdvisory:$skipAdvisorySwitch -IncludeTags $IncludeTags -TagKey $TagKey -TagValue $TagValue -AzureEnvironment $AzureEnvironment
                     $Advisories = $GraphData.Advisories
-                    # Safely access Count property - handle null/empty cases
-                    if ($null -ne $Advisories) {
-                        $AdvisoryCount = [string]$Advisories.Count
-                    } else {
-                        $AdvisoryCount = "0"
+                    # Ensure Advisories is an array for safe Count access
+                    if ($null -eq $Advisories) {
+                        $Advisories = @()
+                    } elseif ($Advisories -isnot [System.Array]) {
+                        $Advisories = @($Advisories)
                     }
+                    # Safely access Count property - handle null/empty cases
+                    $AdvisoryCount = [string]$Advisories.Count
                     Write-Host "[UseExistingCache] Collected $AdvisoryCount Advisor recommendation(s) via API call" -ForegroundColor Green
                     Remove-Variable -Name GraphData -ErrorAction SilentlyContinue
                     
@@ -656,8 +675,14 @@ Function Invoke-CachedARI-Patched {
                     $Advisories = @()
                     $AdvisoryCount = 0
                 }
-            } elseif (-not $skipAdvisoryValue -and $null -ne $Advisories -and $Advisories.Count -gt 0) {
-                Write-Host "[UseExistingCache] Using Advisory data from cache file" -ForegroundColor Green
+            } elseif (-not $skipAdvisoryValue -and $null -ne $Advisories) {
+                # Ensure Advisories is an array for safe Count access
+                if ($Advisories -isnot [System.Array]) {
+                    $Advisories = @($Advisories)
+                }
+                if ($Advisories.Count -gt 0) {
+                    Write-Host "[UseExistingCache] Using Advisory data from cache file" -ForegroundColor Green
+                }
             }
             
             # Collect Policy data if not skipped AND not already loaded from cache

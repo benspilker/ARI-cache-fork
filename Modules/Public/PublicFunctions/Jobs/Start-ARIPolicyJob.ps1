@@ -20,9 +20,39 @@ Authors: Claudio Merola
 function Start-ARIPolicyJob {
     param($Subscriptions, $PolicySetDef, $PolicyAssign, $PolicyDef)
 
+    # Ensure PolicyDef is an array for safe iteration
+    if ($null -eq $PolicyDef) {
+        $PolicyDef = @()
+    } elseif ($PolicyDef -isnot [System.Array]) {
+        $PolicyDef = @($PolicyDef)
+    }
+
     $poltmp = $PolicyDef | Select-Object -Property id,properties -Unique
 
-    $tmp = foreach ($1 in $PolicyAssign.policyAssignments)
+    # Safely access PolicyAssign.policyAssignments
+    $policyAssignments = @()
+    if ($null -ne $PolicyAssign) {
+        if ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
+            if ($null -ne $PolicyAssign.policyAssignments) {
+                $policyAssignments = if ($PolicyAssign.policyAssignments -is [System.Array]) { 
+                    $PolicyAssign.policyAssignments 
+                } else { 
+                    @($PolicyAssign.policyAssignments) 
+                }
+            }
+        } elseif ($PolicyAssign -is [System.Array]) {
+            $policyAssignments = $PolicyAssign
+        }
+    }
+
+    # Ensure PolicySetDef is an array for safe iteration
+    if ($null -eq $PolicySetDef) {
+        $PolicySetDef = @()
+    } elseif ($PolicySetDef -isnot [System.Array]) {
+        $PolicySetDef = @($PolicySetDef)
+    }
+
+    $tmp = foreach ($1 in $policyAssignments)
         {
             if(![string]::IsNullOrEmpty($1.policySetDefinitionId))
                 {
@@ -33,7 +63,13 @@ function Start-ARIPolicyJob {
                                     $PolDe.properties.displayName
                                 }
                         }
-                    $Initiative = if($TempPolDef.count -gt 1){$TempPolDef[0]}else{$TempPolDef}
+                    # Ensure TempPolDef is an array for safe count access
+                    if ($null -eq $TempPolDef) {
+                        $TempPolDef = @()
+                    } elseif ($TempPolDef -isnot [System.Array]) {
+                        $TempPolDef = @($TempPolDef)
+                    }
+                    $Initiative = if($TempPolDef.Count -gt 1){$TempPolDef[0]}else{$TempPolDef}
                     $InitNonCompRes = $1.results.nonCompliantResources
                     $InitNonCompPol = $1.results.nonCompliantPolicies
                 }
@@ -44,7 +80,17 @@ function Start-ARIPolicyJob {
                     $InitNonCompPol = ''
                 }
 
-            foreach ($2 in $1.policyDefinitions)
+            # Safely access policyDefinitions
+            $policyDefinitions = @()
+            if ($null -ne $1 -and $null -ne $1.policyDefinitions) {
+                $policyDefinitions = if ($1.policyDefinitions -is [System.Array]) { 
+                    $1.policyDefinitions 
+                } else { 
+                    @($1.policyDefinitions) 
+                }
+            }
+
+            foreach ($2 in $policyDefinitions)
                 {
                     $Pol = (($poltmp | Where-Object {$_.id -eq $2.policyDefinitionId}).properties)
                     if(![string]::IsNullOrEmpty($Pol))
@@ -78,5 +124,11 @@ function Start-ARIPolicyJob {
                         }
                 }
         }
+    # Ensure tmp is always an array (foreach might return null if empty)
+    if ($null -eq $tmp) {
+        $tmp = @()
+    } elseif ($tmp -isnot [System.Array]) {
+        $tmp = @($tmp)
+    }
     $tmp
 }
