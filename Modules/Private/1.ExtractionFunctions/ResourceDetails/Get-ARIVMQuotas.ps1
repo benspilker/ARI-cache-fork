@@ -26,7 +26,9 @@ function Get-AriVMQuotas {
                 {
                     Foreach($Loc in $Locs)
                         {
-                            if($Loc.count -eq 1)
+                            # Safely check Loc count - handle null/empty cases
+                            $locCount = if ($null -ne $Loc -and $Loc -is [System.Array]) { $Loc.Count } elseif ($null -ne $Loc) { 1 } else { 0 }
+                            if($locCount -eq 1)
                                 {
                                     Set-AzContext -Subscription $Sub.Id -ErrorAction SilentlyContinue -WarningAction SilentlyContinue -Debug:$false
                                     $Quota = get-azvmusage -location $Loc -Debug:$false

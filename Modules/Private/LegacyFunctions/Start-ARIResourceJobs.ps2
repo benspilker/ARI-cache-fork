@@ -69,7 +69,10 @@ function Start-ARIResourceJobs {
                 $Unsupported = $($args[10])
 
                 $ParentPath = (get-item $($args[1])).parent.parent
-                $InventoryModulesPath = Join-Path $ParentPath 'Public' 'InventoryModules' '*.ps1'
+                # Build path correctly - Join-Path only accepts two arguments, so chain them
+                $InventoryModulesPath = Join-Path $ParentPath 'Public'
+                $InventoryModulesPath = Join-Path $InventoryModulesPath 'InventoryModules'
+                $InventoryModulesPath = Join-Path $InventoryModulesPath '*.ps1'
                 $Modules = Get-ChildItem -Path $InventoryModulesPath -Recurse
 
                 $job = @()

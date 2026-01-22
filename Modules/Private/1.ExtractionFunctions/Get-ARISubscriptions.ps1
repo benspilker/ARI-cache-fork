@@ -24,13 +24,17 @@ function Get-ARISubscriptions {
             
             if ($SubscriptionID)
                 {
-                    if($SubscriptionID.count -gt 1)
+                    # Safely check SubscriptionID count - handle null/empty cases
+                    $subIdCount = if ($null -ne $SubscriptionID -and $SubscriptionID -is [System.Array]) { $SubscriptionID.Count } elseif ($null -ne $SubscriptionID) { 1 } else { 0 }
+                    if($subIdCount -gt 1)
                         {
                             $Subscriptions = $Subscriptions | Where-Object { $_.ID -in $SubscriptionID }
                         }
-                    else
+                    elseif($subIdCount -eq 1)
                         {
-                            $Subscriptions = $Subscriptions | Where-Object { $_.ID -eq $SubscriptionID }
+                            # Handle both single string and single-element array
+                            $singleSubId = if ($SubscriptionID -is [System.Array]) { $SubscriptionID[0] } else { $SubscriptionID }
+                            $Subscriptions = $Subscriptions | Where-Object { $_.ID -eq $singleSubId }
                         }
                 }
         }
@@ -49,13 +53,17 @@ function Get-ARISubscriptions {
             
             if ($SubscriptionID)
                 {
-                    if($SubscriptionID.count -gt 1)
+                    # Safely check SubscriptionID count - handle null/empty cases
+                    $subIdCount = if ($null -ne $SubscriptionID -and $SubscriptionID -is [System.Array]) { $SubscriptionID.Count } elseif ($null -ne $SubscriptionID) { 1 } else { 0 }
+                    if($subIdCount -gt 1)
                         {
                             $Subscriptions = $Subscriptions | Where-Object { $_.ID -in $SubscriptionID }
                         }
-                    else
+                    elseif($subIdCount -eq 1)
                         {
-                            $Subscriptions = $Subscriptions | Where-Object { $_.ID -eq $SubscriptionID }
+                            # Handle both single string and single-element array
+                            $singleSubId = if ($SubscriptionID -is [System.Array]) { $SubscriptionID[0] } else { $SubscriptionID }
+                            $Subscriptions = $Subscriptions | Where-Object { $_.ID -eq $singleSubId }
                         }
                 }
         }

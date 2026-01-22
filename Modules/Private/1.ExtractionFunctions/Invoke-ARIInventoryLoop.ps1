@@ -22,9 +22,11 @@ function Invoke-ARIInventoryLoop {
     Write-Progress -Id 1 -activity 'Azure Inventory' -Status "1% Complete." -PercentComplete 1 -CurrentOperation ('Extracting: ' + $LoopName)
     $ReportCounter = 1
     $LocalResults = @()
-    if($FSubscri.count -gt 200)
+    # Safely check FSubscri count - handle null/empty cases
+    $fSubscriCount = if ($null -ne $FSubscri -and $FSubscri -is [System.Array]) { $FSubscri.Count } elseif ($null -ne $FSubscri) { 1 } else { 0 }
+    if($fSubscriCount -gt 200)
         {
-            $SubLoop = $FSubscri.count / 200
+            $SubLoop = $fSubscriCount / 200
             $SubLooper = 0
             $NStart = 0
             $NEnd = 200

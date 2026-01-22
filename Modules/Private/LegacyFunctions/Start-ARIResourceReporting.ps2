@@ -15,7 +15,10 @@ function Start-ARIResourceReporting {
     $ParentPath = (get-item $PSScriptRoot).parent.parent
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Running Asynchronous, Gathering List Of Modules.')
 
-    $InventoryModulesPath = Join-Path $ParentPath 'Public' 'InventoryModules' '*.ps1'
+    # Build path correctly - Join-Path only accepts two arguments, so chain them
+    $InventoryModulesPath = Join-Path $ParentPath 'Public'
+    $InventoryModulesPath = Join-Path $InventoryModulesPath 'InventoryModules'
+    $InventoryModulesPath = Join-Path $InventoryModulesPath '*.ps1'
     $Modules = Get-ChildItem -Path $InventoryModulesPath -Recurse
 
 
@@ -40,7 +43,10 @@ function Start-ARIResourceReporting {
             {
                 $SmaResources = @{}
                 $ModuleFileName = $ModuleName + '.json'
-                $ModuleFilePath = Join-Path $DefaultPath 'ReportCache' 'ResourceCache' $ModuleFileName
+                # Build path correctly - Join-Path only accepts two arguments, so chain them
+                $ModuleFilePath = Join-Path $DefaultPath 'ReportCache'
+                $ModuleFilePath = Join-Path $ModuleFilePath 'ResourceCache'
+                $ModuleFilePath = Join-Path $ModuleFilePath $ModuleFileName
                 if (Test-Path -Path $ModuleFilePath -PathType Leaf)
                     {
                         $SmaResources["$ModuleName"] = Get-Content -Path $ModuleFilePath | ConvertFrom-Json

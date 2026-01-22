@@ -211,11 +211,25 @@ Function Start-ARIGraphExtraction {
 
     $RootPath = (get-item $PSScriptRoot).parent
 
-    $RetirementPath = Join-Path $RootPath '3.ReportingFunctions' 'StyleFunctions' 'Retirement.kql'
+    # Build path correctly - Join-Path only accepts two arguments, so chain them
+    $RetirementPath = Join-Path $RootPath '3.ReportingFunctions'
+    $RetirementPath = Join-Path $RetirementPath 'StyleFunctions'
+    $RetirementPath = Join-Path $RetirementPath 'Retirement.kql'
 
-    $RetirementQuery = Get-Content -Path $RetirementPath | Out-String
+    # Check if file exists, if not skip retirement query
+    if (Test-Path $RetirementPath) {
+        $RetirementQuery = Get-Content -Path $RetirementPath | Out-String
+    } else {
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Retirement.kql not found, skipping retirement query')
+        $RetirementQuery = ""
+    }
 
-    $ResourceRetirements = Invoke-ARIInventoryLoop -GraphQuery $RetirementQuery -FSubscri $Subscri -LoopName 'Retirements'
+    # Only invoke retirement loop if query exists
+    if (![string]::IsNullOrEmpty($RetirementQuery)) {
+        $ResourceRetirements = Invoke-ARIInventoryLoop -GraphQuery $RetirementQuery -FSubscri $Subscri -LoopName 'Retirements'
+    } else {
+        $ResourceRetirements = @()
+    }
 
     # Safely access ResourceRetirements.count - handle null/empty cases
     if ($null -ne $ResourceRetirements) {

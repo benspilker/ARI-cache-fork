@@ -25,7 +25,9 @@ function Get-ARIManagementGroups {
     $QueryResult = Search-AzGraph -Query $GraphQuery -first 1000 -Debug:$false
     $LocalResults = $QueryResult
 
-    if ($LocalResults.Count -lt 1) {
+    # Safely check LocalResults count - handle null/empty cases
+    $localResultsCount = if ($null -ne $LocalResults -and $LocalResults -is [System.Array]) { $LocalResults.Count } elseif ($null -ne $LocalResults) { 1 } else { 0 }
+    if ($localResultsCount -lt 1) {
         Write-Host "ERROR:" -NoNewline -ForegroundColor Red
         Write-Host "No Subscriptions found for Management Group: $ManagementGroup!"
         Write-Host ""
@@ -34,7 +36,7 @@ function Get-ARIManagementGroups {
         Exit
     }
     else {
-        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Subscriptions found for Management Group: ' + $LocalResults.Count)
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Subscriptions found for Management Group: ' + $localResultsCount)
         $FinalSubscriptions = foreach ($Sub in $Subscriptions)
             {
                 if ($Sub.name -in $LocalResults.name)

@@ -13,9 +13,14 @@ function Start-ARILargeEnvOrderFiles {
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Ordering Cached Files.')
 
     $ParentPath = (get-item $PSScriptRoot).parent.parent
-    $InventoryModulesPath = Join-Path $ParentPath 'Public' 'InventoryModules' '*.ps1'
+    # Build path correctly - Join-Path only accepts two arguments, so chain them
+    $InventoryModulesPath = Join-Path $ParentPath 'Public'
+    $InventoryModulesPath = Join-Path $InventoryModulesPath 'InventoryModules'
+    $InventoryModulesPath = Join-Path $InventoryModulesPath '*.ps1'
     $Modules = Get-ChildItem -Path $InventoryModulesPath -Recurse
-    $ModFolder = Join-Path $DefaultPath 'ReportCache' 'ResourceCache'
+    # Build path correctly - Join-Path only accepts two arguments, so chain them
+    $ModFolder = Join-Path $DefaultPath 'ReportCache'
+    $ModFolder = Join-Path $ModFolder 'ResourceCache'
     if ((Test-Path -Path $ModFolder -PathType Container) -eq $false) {
         New-Item -Type Directory -Force -Path $ModFolder | Out-Null
     }
