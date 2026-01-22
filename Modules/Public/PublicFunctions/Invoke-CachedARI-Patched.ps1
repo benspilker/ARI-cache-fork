@@ -623,6 +623,14 @@ Function Invoke-CachedARI-Patched {
             # Collect Advisor data if not skipped AND not already loaded from cache
             if (-not $skipAdvisoryValue -and ($null -eq $Advisories -or $Advisories.Count -eq 0)) {
                 Write-Host "[UseExistingCache] Collecting Advisor data via API (cache file not found)..." -ForegroundColor Cyan
+                
+                # Aggressive memory cleanup BEFORE Advisor API call
+                Write-Host "[UseExistingCache] Running extreme memory cleanup before Advisor API call..." -ForegroundColor Gray
+                [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $false)
+                [System.GC]::WaitForPendingFinalizers()
+                [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
+                Start-Sleep -Milliseconds 500
+                
                 try {
                     # Create a switch parameter for SkipAdvisory (Start-ARIGraphExtraction expects a switch)
                     $skipAdvisorySwitch = [switch]$false
@@ -667,6 +675,14 @@ Function Invoke-CachedARI-Patched {
             
             if (-not $skipPolicyValue -and -not $hasPolicyData) {
                 Write-Host "[UseExistingCache] Collecting Policy data via API (cache file not found)..." -ForegroundColor Cyan
+                
+                # Aggressive memory cleanup BEFORE Policy API call
+                Write-Host "[UseExistingCache] Running extreme memory cleanup before Policy API call..." -ForegroundColor Gray
+                [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $false)
+                [System.GC]::WaitForPendingFinalizers()
+                [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
+                Start-Sleep -Milliseconds 500
+                
                 try {
                     # Create a switch parameter for SkipPolicy (Get-ARIAPIResources expects a switch)
                     $skipPolicySwitch = [switch]$false
