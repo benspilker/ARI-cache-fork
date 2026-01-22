@@ -834,61 +834,6 @@ Function Invoke-CachedARI-Patched {
                                 $PolicyCount = 0
                             }
                         }
-                    } catch {
-                        # Memory check failed, proceed with Policy collection but log warning
-                        Write-Host "[UseExistingCache] Warning: Could not check available memory: $_" -ForegroundColor Yellow
-                        Write-Host "[UseExistingCache] Proceeding with Policy collection (may fail if memory is low)..." -ForegroundColor Yellow
-                        
-                        # EXTREME memory cleanup BEFORE Policy API call
-                        Write-Host "[UseExistingCache] Running EXTREME memory cleanup before Policy API call..." -ForegroundColor Gray
-                        try {
-                            Get-Job | Remove-Job -Force -ErrorAction SilentlyContinue
-                            for ($i = 1; $i -le 10; $i++) {
-                                [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $false)
-                                [System.GC]::WaitForPendingFinalizers()
-                                [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
-                            }
-                            Clear-ARIMemory
-                            Start-Sleep -Milliseconds 1000
-                        } catch {
-                            Write-Host "[UseExistingCache] Warning: Pre-Policy cleanup had issues: $_" -ForegroundColor Yellow
-                        }
-                        
-                        try {
-                            $skipPolicySwitch = [switch]$false
-                            $APIResults = Get-ARIAPIResources -Subscriptions $Subscriptions -AzureEnvironment $AzureEnvironment -SkipPolicy:$skipPolicySwitch
-                            $PolicyAssign = $APIResults.PolicyAssign
-                            $PolicyDef = $APIResults.PolicyDef
-                            $PolicySetDef = $APIResults.PolicySetDef
-                            if ($null -ne $PolicyAssign) {
-                                if ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
-                                    if ($PolicyAssign.policyAssignments -is [System.Array]) {
-                                        $PolicyCount = [string]$PolicyAssign.policyAssignments.Count
-                                    } else {
-                                        $PolicyCount = "0"
-                                    }
-                                } elseif ($PolicyAssign -is [System.Array]) {
-                                    $PolicyCount = if ($null -ne $PolicyAssign -and $PolicyAssign -is [System.Array]) { [string]$PolicyAssign.Count } else { "0" }
-                                } else {
-                                    $PolicyCount = "1"
-                                }
-                            } else {
-                                $PolicyCount = "0"
-                            }
-                            Write-Host "[UseExistingCache] Collected $PolicyCount Policy assignment(s) via API call" -ForegroundColor Green
-                            Remove-Variable -Name APIResults -ErrorAction SilentlyContinue
-                            
-                            [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $false)
-                            [System.GC]::WaitForPendingFinalizers()
-                            [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
-                            Start-Sleep -Milliseconds 500
-                        } catch {
-                            Write-Host "[UseExistingCache] Warning: Failed to collect Policy data: $_" -ForegroundColor Yellow
-                            $PolicyAssign = @{ policyAssignments = @() }
-                            $PolicyDef = @()
-                            $PolicySetDef = @()
-                            $PolicyCount = 0
-                        }
                     }
                 }
             } elseif (-not $skipPolicyValue -and $hasPolicyData) {
