@@ -476,40 +476,11 @@ Function Invoke-CachedARI-Patched {
             }
         }
         
-        # Load Advisory data from cache if available
+        # Advisory data is NOT loaded from cache - it will be collected via API call instead
         # Handle both switch parameter and boolean value
         $skipAdvisoryValue = if ($SkipAdvisory -is [switch]) { $SkipAdvisory.IsPresent } else { $SkipAdvisory -eq $true }
         if (-not $skipAdvisoryValue) {
-            if (Test-Path $advisoryCacheFile) {
-                Write-Host "[UseExistingCache] Loading Advisory data from cache file: $advisoryCacheFile" -ForegroundColor Cyan
-                try {
-                    $advisoryCacheData = Get-Content $advisoryCacheFile -Raw | ConvertFrom-Json
-                    # Advisory cache file contains processed Advisory job results (array of advisory records)
-                    # We need to recreate Advisories from this
-                    # For now, mark that we have Advisory data and it will be processed via Start-ARIExtraJobs
-                    Write-Host "[UseExistingCache] Loaded Advisory cache file ($($advisoryCacheData.Count) advisory record(s))" -ForegroundColor Green
-                    # Advisory data will be loaded when Start-ARIExtraJobs processes the Advisory job
-                } catch {
-                    Write-Host "[UseExistingCache] Warning: Failed to load Advisory cache file: $_" -ForegroundColor Yellow
-                }
-            } elseif (Test-Path $advisoryRawCacheFile) {
-                Write-Host "[UseExistingCache] Loading raw Advisory data from cache file: $advisoryRawCacheFile" -ForegroundColor Cyan
-                try {
-                    $Advisories = Get-Content $advisoryRawCacheFile -Raw | ConvertFrom-Json
-                    if ($null -ne $Advisories) {
-                        if ($Advisories -isnot [System.Array]) {
-                            $Advisories = @($Advisories)
-                        }
-                        $AdvisoryCount = [string]$Advisories.Count
-                    } else {
-                        $Advisories = @()
-                        $AdvisoryCount = "0"
-                    }
-                    Write-Host "[UseExistingCache] Loaded raw Advisory data ($AdvisoryCount advisory recommendation(s))" -ForegroundColor Green
-                } catch {
-                    Write-Host "[UseExistingCache] Warning: Failed to load raw Advisory cache file: $_" -ForegroundColor Yellow
-                }
-            }
+            Write-Host "[UseExistingCache] Advisory cache file not found - will collect via API call" -ForegroundColor Gray
         }
         
         # Policy and Advisor data will be collected below if authentication is available AND cache files don't exist
@@ -663,7 +634,7 @@ Function Invoke-CachedARI-Patched {
                     } else {
                         $AdvisoryCount = "0"
                     }
-                    Write-Host "[UseExistingCache] Collected $AdvisoryCount Advisor recommendation(s)" -ForegroundColor Green
+                    Write-Host "[UseExistingCache] Collected $AdvisoryCount Advisor recommendation(s) via API call" -ForegroundColor Green
                     Remove-Variable -Name GraphData -ErrorAction SilentlyContinue
                     
                     # Aggressive memory cleanup after Advisor API call
@@ -719,7 +690,7 @@ Function Invoke-CachedARI-Patched {
                     } else {
                         $PolicyCount = "0"
                     }
-                    Write-Host "[UseExistingCache] Collected $PolicyCount Policy assignment(s)" -ForegroundColor Green
+                    Write-Host "[UseExistingCache] Collected $PolicyCount Policy assignment(s) via API call" -ForegroundColor Green
                     Remove-Variable -Name APIResults -ErrorAction SilentlyContinue
                     
                     # Aggressive memory cleanup after Policy API call
@@ -845,9 +816,8 @@ Function Invoke-CachedARI-Patched {
         Write-Host "[SkipExcel] Skipping Excel generation - only creating cache files" -ForegroundColor Green
         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[SkipExcel] Skipped Excel report generation')
         
-        # Save Advisory data to cache files before skipping Excel generation
-        # Note: Policy data is NOT cached - it will be collected via API call during Excel generation
-        # This avoids merge issues with PolicyRaw.json files that have inconsistent structures
+        # Note: Policy and Advisory data are NOT cached - they will be collected via API call during Excel generation
+        # This avoids merge issues with PolicyRaw.json and AdvisoryRaw.json files that have inconsistent structures
         # Handle both switch parameters and boolean values
         $skipPolicyCheck = if ($SkipPolicy -is [switch]) { $SkipPolicy.IsPresent } else { $SkipPolicy -eq $true }
         if (-not $skipPolicyCheck) {
@@ -856,57 +826,11 @@ Function Invoke-CachedARI-Patched {
             Write-Host "[SkipExcel] Policy data will be collected via API call during Excel generation (not caching)" -ForegroundColor Gray
         }
         
-        # Handle both switch parameters and boolean values
         $skipAdvisoryCheck = if ($SkipAdvisory -is [switch]) { $SkipAdvisory.IsPresent } else { $SkipAdvisory -eq $true }
         if (-not $skipAdvisoryCheck) {
-            # Wait for Advisory job to complete if it exists
-            $advisoryJob = Get-Job -Name 'Advisory' -ErrorAction SilentlyContinue
-            if ($null -ne $advisoryJob) {
-                Write-Host "[SkipExcel] Waiting for Advisory job to complete..." -ForegroundColor Cyan
-                while ($advisoryJob.State -eq 'Running') {
-                    Start-Sleep -Seconds 2
-                    $advisoryJob = Get-Job -Name 'Advisory' -ErrorAction SilentlyContinue
-                }
-                if ($advisoryJob.State -eq 'Completed') {
-                    $advisoryJobResult = Receive-Job -Name 'Advisory'
-                    Remove-Job -Name 'Advisory' -ErrorAction SilentlyContinue
-                    
-                    # Save Advisory job result to cache file
-                    $advisoryCacheFile = Join-Path $ReportCache 'Advisory.json'
-                    Write-Host "[SkipExcel] Saving Advisory data to cache file: $advisoryCacheFile" -ForegroundColor Green
-                    $advisoryJobResult | ConvertTo-Json -Depth 40 | Out-File $advisoryCacheFile -Force
-                    # Safely access Count property
-                    $advisoryCount = if ($null -ne $advisoryJobResult) {
-                        if ($advisoryJobResult -is [System.Array]) {
-                            $advisoryJobResult.Count
-                        } elseif ($advisoryJobResult -is [PSCustomObject] -or $advisoryJobResult -is [System.Collections.Hashtable]) {
-                            1
-                        } else {
-                            try { $advisoryJobResult.Count } catch { 0 }
-                        }
-                    } else {
-                        0
-                    }
-                    Write-Host "[SkipExcel] Saved Advisory data ($advisoryCount advisory record(s))" -ForegroundColor Green
-                }
-            } else {
-                # If no Advisory job exists, save raw Advisory data
-                if ($null -ne $Advisories) {
-                    $advisoryCount = if ($Advisories -is [System.Array]) {
-                        $Advisories.Count
-                    } elseif ($null -ne $Advisories) {
-                        1
-                    } else {
-                        0
-                    }
-                    if ($advisoryCount -gt 0) {
-                        $advisoryCacheFile = Join-Path $ReportCache 'AdvisoryRaw.json'
-                        Write-Host "[SkipExcel] Saving raw Advisory data to cache file: $advisoryCacheFile" -ForegroundColor Green
-                        $Advisories | ConvertTo-Json -Depth 40 | Out-File $advisoryCacheFile -Force
-                        Write-Host "[SkipExcel] Saved raw Advisory data ($advisoryCount advisory recommendation(s))" -ForegroundColor Green
-                    }
-                }
-            }
+            # Advisory data will be collected via API call during Excel generation
+            # No need to cache it during batch collection
+            Write-Host "[SkipExcel] Advisory data will be collected via API call during Excel generation (not caching)" -ForegroundColor Gray
         }
         
         $TotalRes = 0
