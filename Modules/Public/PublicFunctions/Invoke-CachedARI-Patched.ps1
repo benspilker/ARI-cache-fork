@@ -826,15 +826,36 @@ Function Invoke-CachedARI-Patched {
                     $advisoryCacheFile = Join-Path $ReportCache 'Advisory.json'
                     Write-Host "[SkipExcel] Saving Advisory data to cache file: $advisoryCacheFile" -ForegroundColor Green
                     $advisoryJobResult | ConvertTo-Json -Depth 40 | Out-File $advisoryCacheFile -Force
-                    Write-Host "[SkipExcel] Saved Advisory data ($($advisoryJobResult.Count) advisory record(s))" -ForegroundColor Green
+                    # Safely access Count property
+                    $advisoryCount = if ($null -ne $advisoryJobResult) {
+                        if ($advisoryJobResult -is [System.Array]) {
+                            $advisoryJobResult.Count
+                        } elseif ($advisoryJobResult -is [PSCustomObject] -or $advisoryJobResult -is [System.Collections.Hashtable]) {
+                            1
+                        } else {
+                            try { $advisoryJobResult.Count } catch { 0 }
+                        }
+                    } else {
+                        0
+                    }
+                    Write-Host "[SkipExcel] Saved Advisory data ($advisoryCount advisory record(s))" -ForegroundColor Green
                 }
             } else {
                 # If no Advisory job exists, save raw Advisory data
-                if ($null -ne $Advisories -and $Advisories.Count -gt 0) {
-                    $advisoryCacheFile = Join-Path $ReportCache 'AdvisoryRaw.json'
-                    Write-Host "[SkipExcel] Saving raw Advisory data to cache file: $advisoryCacheFile" -ForegroundColor Green
-                    $Advisories | ConvertTo-Json -Depth 40 | Out-File $advisoryCacheFile -Force
-                    Write-Host "[SkipExcel] Saved raw Advisory data ($($Advisories.Count) advisory recommendation(s))" -ForegroundColor Green
+                if ($null -ne $Advisories) {
+                    $advisoryCount = if ($Advisories -is [System.Array]) {
+                        $Advisories.Count
+                    } elseif ($null -ne $Advisories) {
+                        1
+                    } else {
+                        0
+                    }
+                    if ($advisoryCount -gt 0) {
+                        $advisoryCacheFile = Join-Path $ReportCache 'AdvisoryRaw.json'
+                        Write-Host "[SkipExcel] Saving raw Advisory data to cache file: $advisoryCacheFile" -ForegroundColor Green
+                        $Advisories | ConvertTo-Json -Depth 40 | Out-File $advisoryCacheFile -Force
+                        Write-Host "[SkipExcel] Saved raw Advisory data ($advisoryCount advisory recommendation(s))" -ForegroundColor Green
+                    }
                 }
             }
         }
