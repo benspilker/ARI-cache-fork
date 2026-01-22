@@ -73,63 +73,85 @@ function Start-ARISubscriptionJob {
             
             $ResTable3 = $resTable2 | Group-Object -Property Type, location, resourcegroup, subscriptionid
             
-            Write-Debug "Start-ARISubscriptionJob: After grouping, ResTable3 has $($ResTable3.Count) group(s)"
+            # Safely get ResTable3 count
+            $resTable3Count = if ($null -ne $ResTable3 -and $ResTable3 -is [System.Array]) { $ResTable3.Count } elseif ($null -ne $ResTable3) { 1 } else { 0 }
+            Write-Debug "Start-ARISubscriptionJob: After grouping, ResTable3 has $resTable3Count group(s)"
 
-            $FormattedTable = foreach ($ResourcesSUB in $ResTable3) 
-                {
-                    $ResourceDetails = $ResourcesSUB.name -split ", "
-                    if ($ResourceDetails.Count -ge 4) {
-                        $subId = $ResourceDetails[3]
-                        $SubName = $Subscriptions | Where-Object { 
-                            $subObjId = if ($null -ne $_.Id) { $_.Id } elseif ($null -ne $_.id) { $_.id } elseif ($null -ne $_.ID) { $_.ID } else { '' }
-                            $subObjId -eq $subId
-                        } | Select-Object -First 1
-                        
-                        $subscriptionName = if ($null -ne $SubName -and $null -ne $SubName.Name) { $SubName.Name } elseif ($null -ne $SubName -and $null -ne $SubName.name) { $SubName.name } else { $subId }
-                        
-                        $obj = [PSCustomObject]@{
-                            'Subscription'      = $subscriptionName
-                            'SubscriptionId'    = $subId
-                            'Resource Group'    = if ($ResourceDetails.Count -ge 3) { $ResourceDetails[2] } else { '' }
-                            'Location'          = if ($ResourceDetails.Count -ge 2) { $ResourceDetails[1] } else { '' }
-                            'Resource Type'     = if ($ResourceDetails.Count -ge 1) { $ResourceDetails[0] } else { '' }
-                            'Resources Count'   = $ResourcesSUB.Count
+            # Initialize FormattedTable as empty array to ensure it's always an array
+            $FormattedTable = @()
+            if ($null -ne $ResTable3) {
+                $FormattedTable = foreach ($ResourcesSUB in $ResTable3) 
+                    {
+                        $ResourceDetails = $ResourcesSUB.name -split ", "
+                        if ($ResourceDetails.Count -ge 4) {
+                            $subId = $ResourceDetails[3]
+                            $SubName = $Subscriptions | Where-Object { 
+                                $subObjId = if ($null -ne $_.Id) { $_.Id } elseif ($null -ne $_.id) { $_.id } elseif ($null -ne $_.ID) { $_.ID } else { '' }
+                                $subObjId -eq $subId
+                            } | Select-Object -First 1
+                            
+                            $subscriptionName = if ($null -ne $SubName -and $null -ne $SubName.Name) { $SubName.Name } elseif ($null -ne $SubName -and $null -ne $SubName.name) { $SubName.name } else { $subId }
+                            
+                            $obj = [PSCustomObject]@{
+                                'Subscription'      = $subscriptionName
+                                'SubscriptionId'    = $subId
+                                'Resource Group'    = if ($ResourceDetails.Count -ge 3) { $ResourceDetails[2] } else { '' }
+                                'Location'          = if ($ResourceDetails.Count -ge 2) { $ResourceDetails[1] } else { '' }
+                                'Resource Type'     = if ($ResourceDetails.Count -ge 1) { $ResourceDetails[0] } else { '' }
+                                'Resources Count'   = $ResourcesSUB.Count
+                            }
+                            $obj
                         }
-                        $obj
                     }
+                # Ensure FormattedTable is an array (foreach might return null if empty)
+                if ($null -eq $FormattedTable) {
+                    $FormattedTable = @()
+                } elseif ($FormattedTable -isnot [System.Array]) {
+                    $FormattedTable = @($FormattedTable)
                 }
+            }
             
             Write-Debug "Start-ARISubscriptionJob: FormattedTable has $($FormattedTable.Count) item(s)"
         }
     else
         {
-            $FormattedTable = foreach ($Cost in $CostData)
-                {
-                    Foreach ($CostDetail in $Cost.CostData.Row)
-                        {
-                            Foreach ($Currency in $CostDetail[6])
-                                {
-                                    $Date0 = [datetime]$CostDetail[1]
-                                    $DateMonth = ((Get-Culture).DateTimeFormat.GetMonthName(([datetime]$Date0).ToString("MM"))).ToString()
-                                    $DateYear = (([datetime]$Date0).ToString("yyyy")).ToString()
+            # Initialize FormattedTable as empty array to ensure it's always an array
+            $FormattedTable = @()
+            if ($null -ne $CostData) {
+                $FormattedTable = foreach ($Cost in $CostData)
+                    {
+                        Foreach ($CostDetail in $Cost.CostData.Row)
+                            {
+                                Foreach ($Currency in $CostDetail[6])
+                                    {
+                                        $Date0 = [datetime]$CostDetail[1]
+                                        $DateMonth = ((Get-Culture).DateTimeFormat.GetMonthName(([datetime]$Date0).ToString("MM"))).ToString()
+                                        $DateYear = (([datetime]$Date0).ToString("yyyy")).ToString()
 
-                                    $obj = [PSCustomObject]@{
-                                        'Subscription'      = $Cost.SubscriptionName
-                                        'SubscriptionId'    = $Cost.SubscriptionId
-                                        'Resource Group'    = $CostDetail[3]
-                                        'Resource Type'     = $CostDetail[2]
-                                        'Location'          = $CostDetail[4]
-                                        'Service Name'      = $CostDetail[5]
-                                        'Currency'          = $Currency
-                                        'Cost'              = $CostDetail[0]
-                                        'Detailed Cost'     = $CostDetail[0]
-                                        'Year'              = $DateYear
-                                        'Month'             = $DateMonth
+                                        $obj = [PSCustomObject]@{
+                                            'Subscription'      = $Cost.SubscriptionName
+                                            'SubscriptionId'    = $Cost.SubscriptionId
+                                            'Resource Group'    = $CostDetail[3]
+                                            'Resource Type'     = $CostDetail[2]
+                                            'Location'          = $CostDetail[4]
+                                            'Service Name'      = $CostDetail[5]
+                                            'Currency'          = $Currency
+                                            'Cost'              = $CostDetail[0]
+                                            'Detailed Cost'     = $CostDetail[0]
+                                            'Year'              = $DateYear
+                                            'Month'             = $DateMonth
+                                        }
+                                        $obj
                                     }
-                                    $obj
-                                }
-                        }
+                            }
+                    }
+                # Ensure FormattedTable is an array (foreach might return null if empty)
+                if ($null -eq $FormattedTable) {
+                    $FormattedTable = @()
+                } elseif ($FormattedTable -isnot [System.Array]) {
+                    $FormattedTable = @($FormattedTable)
                 }
+            }
         }
 
         <#

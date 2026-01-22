@@ -111,13 +111,28 @@ function Start-ARIExtraReports {
 
     Write-Progress -activity 'Azure Resource Inventory Subscriptions' -Status "50% Complete." -PercentComplete 50 -CurrentOperation "Building Subscriptions Sheet"
 
-    while (get-job -Name 'Subscriptions' | Where-Object { $_.State -eq 'Running' }) {
-        Write-Progress -Id 1 -activity 'Processing Subscriptions' -Status "50% Complete." -PercentComplete 50
-        Start-Sleep -Seconds 2
-    }
+    $SubscriptionsJob = Get-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
+    if ($null -ne $SubscriptionsJob) {
+        while ($SubscriptionsJob | Where-Object { $_.State -eq 'Running' }) {
+            Write-Progress -Id 1 -activity 'Processing Subscriptions' -Status "50% Complete." -PercentComplete 50
+            Start-Sleep -Seconds 2
+            $SubscriptionsJob = Get-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
+        }
 
-    $AzSubs = Receive-Job -Name 'Subscriptions'
-    Remove-Job -Name 'Subscriptions' | Out-Null
+        $AzSubs = Receive-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
+        Remove-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue | Out-Null
+        
+        # Ensure AzSubs is an array for safe handling
+        if ($null -eq $AzSubs) {
+            $AzSubs = @()
+        } elseif ($AzSubs -isnot [System.Array]) {
+            # If it's a single object, wrap it in an array
+            $AzSubs = @($AzSubs)
+        }
+    } else {
+        Write-Debug "  Warning: Subscriptions job not found - initializing empty array"
+        $AzSubs = @()
+    }
 
     Build-ARISubsReport -File $File -Sub $AzSubs -IncludeCosts $IncludeCosts -TableStyle $TableStyle
 
