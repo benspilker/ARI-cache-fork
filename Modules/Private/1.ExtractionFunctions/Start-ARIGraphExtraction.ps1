@@ -26,13 +26,21 @@ Function Start-ARIGraphExtraction {
     $Advisories = @()
     $Security = @()
     $ResourceRetirements = @()
+    
+    # Initialize all query extension variables at the start to prevent "variable not set" errors
+    $RGQueryExtension = ''
+    $TagQueryExtension = ''
+    $MGQueryExtension = ''
+    $MGContainerExtension = ''
+    $ExcludedTypes = ''
+    $GraphQueryTags = ''
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Starting Extractor function')
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Powershell Edition: ' + ([string]$psversiontable.psEdition))
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Powershell Version: ' + ([string]$psversiontable.psVersion))
 
-    #Field for tags
+    #Field for tags (already initialized above, but set value here)
     if ($IncludeTags.IsPresent) {
         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+"Tags will be included")
         $GraphQueryTags = ",tags "
@@ -107,9 +115,11 @@ Function Start-ARIGraphExtraction {
             } else {
                 $Subscri = @()
             }
+            # Query extension variables already initialized at function start, but reset to empty here
             $RGQueryExtension = ''
             $TagQueryExtension = ''
             $MGQueryExtension = ''
+            $MGContainerExtension = ''
             if(![string]::IsNullOrEmpty($ResourceGroup) -and ![string]::IsNullOrEmpty($SubscriptionID))
                 {
                     $RGQueryExtension = "| where resourceGroup in~ ('$([String]::Join("','",$ResourceGroup))')"
@@ -136,9 +146,10 @@ Function Start-ARIGraphExtraction {
                 }
         }
 
+            # ExcludedTypes already initialized at function start, but set value here
             $ExcludedTypes = "| where type !in ('microsoft.logic/workflows','microsoft.portal/dashboards','microsoft.resources/templatespecs/versions','microsoft.resources/templatespecs')"
 
-            # Initialize Resources array if not already initialized
+            # Resources array already initialized at function start, but ensure it's still an array
             if ($null -eq $Resources) {
                 $Resources = @()
             }
