@@ -73,8 +73,10 @@ function Start-ARIExtractionOrchestration {
         } else {
             $PolicyCount = "1"
         }
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Policy data collected: ' + $PolicyCount + ' policy assignment(s)')
     } else {
         $PolicyCount = "0"
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'No Policy data collected (PolicyAssign is null or empty)')
     }
 
     if ($IncludeCosts.IsPresent) {

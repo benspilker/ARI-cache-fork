@@ -127,15 +127,23 @@ function Get-ARIAPIResources {
                     try {
                         $url = ('https://'+ $AzURL +'/subscriptions/'+$sub+'/providers/Microsoft.PolicyInsights/policyStates/latest/summarize?api-version=2019-10-01')
                         $PolicyAssign = (Invoke-RestMethod -Uri $url -Headers $header -Method POST).value
+                        $PolicyAssignCount = if ($null -ne $PolicyAssign -and $null -ne $PolicyAssign.policyAssignments) { 
+                            if ($PolicyAssign.policyAssignments -is [System.Array]) { $PolicyAssign.policyAssignments.Count } else { 1 }
+                        } else { 0 }
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Collected ' + $PolicyAssignCount + ' policy assignment(s) for subscription ' + $sub)
                         Start-Sleep -Milliseconds 200
                         $url = ('https://'+ $AzURL +'/subscriptions/'+$sub+'/providers/Microsoft.Authorization/policySetDefinitions?api-version=2023-04-01')
                         $PolicySetDef = (Invoke-RestMethod -Uri $url -Headers $header -Method GET).value
+                        $PolicySetDefCount = if ($null -ne $PolicySetDef -and $PolicySetDef -is [System.Array]) { $PolicySetDef.Count } elseif ($null -ne $PolicySetDef) { 1 } else { 0 }
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Collected ' + $PolicySetDefCount + ' policy set definition(s)')
                         Start-Sleep -Milliseconds 200
                         $url = ('https://'+ $AzURL +'/subscriptions/'+$sub+'/providers/Microsoft.Authorization/policyDefinitions?api-version=2023-04-01')
                         $PolicyDef = (Invoke-RestMethod -Uri $url -Headers $header -Method GET).value
+                        $PolicyDefCount = if ($null -ne $PolicyDef -and $PolicyDef -is [System.Array]) { $PolicyDef.Count } elseif ($null -ne $PolicyDef) { 1 } else { 0 }
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Collected ' + $PolicyDefCount + ' policy definition(s)')
                     }
                     catch {
-                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error: ' + $_.Exception.Message)
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error collecting Policies: ' + $_.Exception.Message)
                         $PolicyAssign = ""
                         $PolicySetDef = ""
                         $PolicyDef = ""

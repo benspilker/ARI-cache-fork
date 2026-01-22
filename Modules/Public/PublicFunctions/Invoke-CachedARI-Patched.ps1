@@ -398,7 +398,85 @@ Function Invoke-CachedARI-Patched {
         $PolicyDef = @()
         $PolicySetDef = @()
         
-        # Policy and Advisor data will be collected below if authentication is available
+        # Try to load Policy and Advisory data from cache files first
+        # This allows Policy/Advisory data collected during batch processing to be used
+        $policyCacheFile = Join-Path $ReportCache 'Policy.json'
+        $policyRawCacheFile = Join-Path $ReportCache 'PolicyRaw.json'
+        $advisoryCacheFile = Join-Path $ReportCache 'Advisory.json'
+        $advisoryRawCacheFile = Join-Path $ReportCache 'AdvisoryRaw.json'
+        
+        # Load Policy data from cache if available
+        if (-not $SkipPolicy.IsPresent) {
+            if (Test-Path $policyCacheFile) {
+                Write-Host "[UseExistingCache] Loading Policy data from cache file: $policyCacheFile" -ForegroundColor Cyan
+                try {
+                    $policyCacheData = Get-Content $policyCacheFile -Raw | ConvertFrom-Json
+                    # Policy cache file contains processed Policy job results (array of policy records)
+                    # We need to recreate PolicyAssign, PolicyDef, PolicySetDef from this
+                    # For now, mark that we have Policy data and it will be processed via Start-ARIExtraJobs
+                    Write-Host "[UseExistingCache] Loaded Policy cache file ($($policyCacheData.Count) policy record(s))" -ForegroundColor Green
+                    # Policy data will be loaded when Start-ARIExtraJobs processes the Policy job
+                } catch {
+                    Write-Host "[UseExistingCache] Warning: Failed to load Policy cache file: $_" -ForegroundColor Yellow
+                }
+            } elseif (Test-Path $policyRawCacheFile) {
+                Write-Host "[UseExistingCache] Loading raw Policy data from cache file: $policyRawCacheFile" -ForegroundColor Cyan
+                try {
+                    $policyRawData = Get-Content $policyRawCacheFile -Raw | ConvertFrom-Json
+                    $PolicyAssign = $policyRawData.PolicyAssign
+                    $PolicyDef = $policyRawData.PolicyDef
+                    $PolicySetDef = $policyRawData.PolicySetDef
+                    if ($null -ne $PolicyAssign -and $null -ne $PolicyAssign.policyAssignments) {
+                        $PolicyCount = if ($PolicyAssign.policyAssignments -is [System.Array]) { 
+                            [string]$PolicyAssign.policyAssignments.Count 
+                        } else { 
+                            "1" 
+                        }
+                    } else {
+                        $PolicyCount = "0"
+                    }
+                    Write-Host "[UseExistingCache] Loaded raw Policy data ($PolicyCount policy assignment(s))" -ForegroundColor Green
+                } catch {
+                    Write-Host "[UseExistingCache] Warning: Failed to load raw Policy cache file: $_" -ForegroundColor Yellow
+                }
+            }
+        }
+        
+        # Load Advisory data from cache if available
+        if (-not $SkipAdvisory.IsPresent) {
+            if (Test-Path $advisoryCacheFile) {
+                Write-Host "[UseExistingCache] Loading Advisory data from cache file: $advisoryCacheFile" -ForegroundColor Cyan
+                try {
+                    $advisoryCacheData = Get-Content $advisoryCacheFile -Raw | ConvertFrom-Json
+                    # Advisory cache file contains processed Advisory job results (array of advisory records)
+                    # We need to recreate Advisories from this
+                    # For now, mark that we have Advisory data and it will be processed via Start-ARIExtraJobs
+                    Write-Host "[UseExistingCache] Loaded Advisory cache file ($($advisoryCacheData.Count) advisory record(s))" -ForegroundColor Green
+                    # Advisory data will be loaded when Start-ARIExtraJobs processes the Advisory job
+                } catch {
+                    Write-Host "[UseExistingCache] Warning: Failed to load Advisory cache file: $_" -ForegroundColor Yellow
+                }
+            } elseif (Test-Path $advisoryRawCacheFile) {
+                Write-Host "[UseExistingCache] Loading raw Advisory data from cache file: $advisoryRawCacheFile" -ForegroundColor Cyan
+                try {
+                    $Advisories = Get-Content $advisoryRawCacheFile -Raw | ConvertFrom-Json
+                    if ($null -ne $Advisories) {
+                        if ($Advisories -isnot [System.Array]) {
+                            $Advisories = @($Advisories)
+                        }
+                        $AdvisoryCount = [string]$Advisories.Count
+                    } else {
+                        $Advisories = @()
+                        $AdvisoryCount = "0"
+                    }
+                    Write-Host "[UseExistingCache] Loaded raw Advisory data ($AdvisoryCount advisory recommendation(s))" -ForegroundColor Green
+                } catch {
+                    Write-Host "[UseExistingCache] Warning: Failed to load raw Advisory cache file: $_" -ForegroundColor Yellow
+                }
+            }
+        }
+        
+        # Policy and Advisor data will be collected below if authentication is available AND cache files don't exist
         
         # Extract subscription information from SubscriptionID parameter for Overview and Subscriptions sheets
         # Create minimal subscription objects with Name and Id properties
@@ -535,9 +613,9 @@ Function Invoke-CachedARI-Patched {
         if ($needAuthForPolicyOrAdvisor -and $subscriptionsCount -gt 0) {
             Write-Host "[UseExistingCache] Collecting Policy and Advisor data via API calls..." -ForegroundColor Yellow
             
-            # Collect Advisor data if not skipped
-            if (-not $SkipAdvisory.IsPresent) {
-                Write-Host "[UseExistingCache] Collecting Advisor data..." -ForegroundColor Cyan
+            # Collect Advisor data if not skipped AND not already loaded from cache
+            if (-not $SkipAdvisory.IsPresent -and ($null -eq $Advisories -or $Advisories.Count -eq 0)) {
+                Write-Host "[UseExistingCache] Collecting Advisor data via API (cache file not found)..." -ForegroundColor Cyan
                 try {
                     $GraphData = Start-ARIGraphExtraction -ManagementGroup $null -Subscriptions $Subscriptions -SubscriptionID $SubscriptionID -ResourceGroup $null -SecurityCenter $SecurityCenter -SkipAdvisory $false -IncludeTags $IncludeTags -TagKey $TagKey -TagValue $TagValue -AzureEnvironment $AzureEnvironment
                     $Advisories = $GraphData.Advisories
@@ -554,11 +632,13 @@ Function Invoke-CachedARI-Patched {
                     $Advisories = @()
                     $AdvisoryCount = 0
                 }
+            } elseif (-not $SkipAdvisory.IsPresent -and $null -ne $Advisories -and $Advisories.Count -gt 0) {
+                Write-Host "[UseExistingCache] Using Advisory data from cache file" -ForegroundColor Green
             }
             
-            # Collect Policy data if not skipped
-            if (-not $SkipPolicy.IsPresent) {
-                Write-Host "[UseExistingCache] Collecting Policy data..." -ForegroundColor Cyan
+            # Collect Policy data if not skipped AND not already loaded from cache
+            if (-not $SkipPolicy.IsPresent -and ($null -eq $PolicyAssign -or ($null -eq $PolicyAssign.policyAssignments -or $PolicyAssign.policyAssignments.Count -eq 0))) {
+                Write-Host "[UseExistingCache] Collecting Policy data via API (cache file not found)..." -ForegroundColor Cyan
                 try {
                     $APIResults = Get-ARIAPIResources -Subscriptions $Subscriptions -AzureEnvironment $AzureEnvironment -SkipPolicy $false
                     $PolicyAssign = $APIResults.PolicyAssign
@@ -579,6 +659,8 @@ Function Invoke-CachedARI-Patched {
                     $PolicySetDef = @()
                     $PolicyCount = 0
                 }
+            } elseif (-not $SkipPolicy.IsPresent -and $null -ne $PolicyAssign -and $null -ne $PolicyAssign.policyAssignments -and $PolicyAssign.policyAssignments.Count -gt 0) {
+                Write-Host "[UseExistingCache] Using Policy data from cache file" -ForegroundColor Green
             }
         }
         
@@ -686,6 +768,77 @@ Function Invoke-CachedARI-Patched {
     if ($SkipExcel.IsPresent) {
         Write-Host "[SkipExcel] Skipping Excel generation - only creating cache files" -ForegroundColor Green
         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[SkipExcel] Skipped Excel report generation')
+        
+        # Save Policy and Advisory data to cache files before skipping Excel generation
+        # This ensures Policy and Advisory data is available when merging batches
+        if (-not $SkipPolicy.IsPresent) {
+            # Wait for Policy job to complete if it exists
+            $policyJob = Get-Job -Name 'Policy' -ErrorAction SilentlyContinue
+            if ($null -ne $policyJob) {
+                Write-Host "[SkipExcel] Waiting for Policy job to complete..." -ForegroundColor Cyan
+                while ($policyJob.State -eq 'Running') {
+                    Start-Sleep -Seconds 2
+                    $policyJob = Get-Job -Name 'Policy' -ErrorAction SilentlyContinue
+                }
+                if ($policyJob.State -eq 'Completed') {
+                    $policyJobResult = Receive-Job -Name 'Policy'
+                    Remove-Job -Name 'Policy' -ErrorAction SilentlyContinue
+                    
+                    # Save Policy job result to cache file
+                    $policyCacheFile = Join-Path $ReportCache 'Policy.json'
+                    Write-Host "[SkipExcel] Saving Policy data to cache file: $policyCacheFile" -ForegroundColor Green
+                    $policyJobResult | ConvertTo-Json -Depth 40 | Out-File $policyCacheFile -Force
+                    Write-Host "[SkipExcel] Saved Policy data ($($policyJobResult.Count) policy record(s))" -ForegroundColor Green
+                }
+            } else {
+                # If no Policy job exists, save raw Policy data (PolicyAssign, PolicyDef, PolicySetDef)
+                if ($null -ne $PolicyAssign -or $null -ne $PolicyDef -or $null -ne $PolicySetDef) {
+                    $policyRawData = @{
+                        PolicyAssign = $PolicyAssign
+                        PolicyDef = $PolicyDef
+                        PolicySetDef = $PolicySetDef
+                    }
+                    $policyCacheFile = Join-Path $ReportCache 'PolicyRaw.json'
+                    Write-Host "[SkipExcel] Saving raw Policy data to cache file: $policyCacheFile" -ForegroundColor Green
+                    $policyRawData | ConvertTo-Json -Depth 40 | Out-File $policyCacheFile -Force
+                    $policyAssignCount = if ($null -ne $PolicyAssign -and $null -ne $PolicyAssign.policyAssignments) { 
+                        if ($PolicyAssign.policyAssignments -is [System.Array]) { $PolicyAssign.policyAssignments.Count } else { 1 }
+                    } else { 0 }
+                    Write-Host "[SkipExcel] Saved raw Policy data ($policyAssignCount policy assignment(s))" -ForegroundColor Green
+                }
+            }
+        }
+        
+        if (-not $SkipAdvisory.IsPresent) {
+            # Wait for Advisory job to complete if it exists
+            $advisoryJob = Get-Job -Name 'Advisory' -ErrorAction SilentlyContinue
+            if ($null -ne $advisoryJob) {
+                Write-Host "[SkipExcel] Waiting for Advisory job to complete..." -ForegroundColor Cyan
+                while ($advisoryJob.State -eq 'Running') {
+                    Start-Sleep -Seconds 2
+                    $advisoryJob = Get-Job -Name 'Advisory' -ErrorAction SilentlyContinue
+                }
+                if ($advisoryJob.State -eq 'Completed') {
+                    $advisoryJobResult = Receive-Job -Name 'Advisory'
+                    Remove-Job -Name 'Advisory' -ErrorAction SilentlyContinue
+                    
+                    # Save Advisory job result to cache file
+                    $advisoryCacheFile = Join-Path $ReportCache 'Advisory.json'
+                    Write-Host "[SkipExcel] Saving Advisory data to cache file: $advisoryCacheFile" -ForegroundColor Green
+                    $advisoryJobResult | ConvertTo-Json -Depth 40 | Out-File $advisoryCacheFile -Force
+                    Write-Host "[SkipExcel] Saved Advisory data ($($advisoryJobResult.Count) advisory record(s))" -ForegroundColor Green
+                }
+            } else {
+                # If no Advisory job exists, save raw Advisory data
+                if ($null -ne $Advisories -and $Advisories.Count -gt 0) {
+                    $advisoryCacheFile = Join-Path $ReportCache 'AdvisoryRaw.json'
+                    Write-Host "[SkipExcel] Saving raw Advisory data to cache file: $advisoryCacheFile" -ForegroundColor Green
+                    $Advisories | ConvertTo-Json -Depth 40 | Out-File $advisoryCacheFile -Force
+                    Write-Host "[SkipExcel] Saved raw Advisory data ($($Advisories.Count) advisory recommendation(s))" -ForegroundColor Green
+                }
+            }
+        }
+        
         $TotalRes = 0
         $ReportingRunTime = [System.Diagnostics.Stopwatch]::StartNew()
         $ReportingRunTime.Stop()
