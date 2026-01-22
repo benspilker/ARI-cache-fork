@@ -31,9 +31,10 @@ function Start-ARIExtractionOrchestration {
     Remove-Variable -Name GraphData -ErrorAction SilentlyContinue
 
     # Safely access Count properties - handle null/empty cases
-    $ResourcesCount = if ($null -ne $Resources) { [string]$Resources.Count } else { "0" }
-    $AdvisoryCount = if ($null -ne $Advisories) { [string]$Advisories.Count } else { "0" }
-    $SecCenterCount = if ($null -ne $Security) { [string]$Security.Count } else { "0" }
+    # Check if variables are arrays before accessing .Count
+    $ResourcesCount = if ($null -ne $Resources -and $Resources -is [System.Array]) { [string]$Resources.Count } elseif ($null -ne $Resources) { "1" } else { "0" }
+    $AdvisoryCount = if ($null -ne $Advisories -and $Advisories -is [System.Array]) { [string]$Advisories.Count } elseif ($null -ne $Advisories) { "1" } else { "0" }
+    $SecCenterCount = if ($null -ne $Security -and $Security -is [System.Array]) { [string]$Security.Count } elseif ($null -ne $Security) { "1" } else { "0" }
 
     if(!$SkipAPIs.IsPresent)
         {
@@ -53,7 +54,11 @@ function Start-ARIExtractionOrchestration {
 
     # Safely access PolicyAssign.policyAssignments.Count - handle null/empty cases
     if ($null -ne $PolicyAssign -and $null -ne $PolicyAssign.policyAssignments) {
-        $PolicyCount = [string]$PolicyAssign.policyAssignments.Count
+        if ($PolicyAssign.policyAssignments -is [System.Array]) {
+            $PolicyCount = [string]$PolicyAssign.policyAssignments.Count
+        } else {
+            $PolicyCount = "1"
+        }
     } else {
         $PolicyCount = "0"
     }

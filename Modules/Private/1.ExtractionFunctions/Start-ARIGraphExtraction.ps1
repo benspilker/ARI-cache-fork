@@ -44,10 +44,22 @@ Function Start-ARIGraphExtraction {
         }
 
     # Safely access Subscriptions.id.count - handle null/empty cases
-    if ($null -ne $Subscriptions -and $null -ne $Subscriptions.id) {
-        $SubCount = [string]$Subscriptions.id.count
-    } elseif ($null -ne $Subscriptions -and $Subscriptions -is [System.Array]) {
-        $SubCount = [string]$Subscriptions.Count
+    # PowerShell member enumeration ($Subscriptions.id) can return array or single value
+    if ($null -ne $Subscriptions) {
+        if ($Subscriptions -is [System.Array]) {
+            # Multiple subscriptions - use array count
+            $SubCount = [string]$Subscriptions.Count
+        } elseif ($null -ne $Subscriptions.id) {
+            # Single subscription - check if id is array or single value
+            $subIdValue = $Subscriptions.id
+            if ($subIdValue -is [System.Array]) {
+                $SubCount = [string]$subIdValue.Count
+            } else {
+                $SubCount = "1"
+            }
+        } else {
+            $SubCount = "0"
+        }
     } else {
         $SubCount = "0"
     }
@@ -70,11 +82,21 @@ Function Start-ARIGraphExtraction {
     else
         {
             # Safely access Subscriptions.id - handle null/empty cases
-            if ($null -ne $Subscriptions -and $null -ne $Subscriptions.id) {
-                $Subscri = $Subscriptions.id
-            } elseif ($null -ne $Subscriptions -and $Subscriptions -is [System.Array]) {
-                # If Subscriptions is an array, extract id property from each
-                $Subscri = $Subscriptions | ForEach-Object { if ($null -ne $_.id) { $_.id } } | Where-Object { $_ -ne $null }
+            # PowerShell member enumeration ($Subscriptions.id) can return array or single value
+            if ($null -ne $Subscriptions) {
+                if ($Subscriptions -is [System.Array]) {
+                    # Multiple subscriptions - extract id property from each and ensure array
+                    $Subscri = $Subscriptions | ForEach-Object { if ($null -ne $_.id) { $_.id } } | Where-Object { $_ -ne $null }
+                    # Ensure it's an array (might be single value if only one subscription)
+                    if ($Subscri -isnot [System.Array]) {
+                        $Subscri = @($Subscri)
+                    }
+                } elseif ($null -ne $Subscriptions.id) {
+                    # Single subscription - wrap in array
+                    $Subscri = @($Subscriptions.id)
+                } else {
+                    $Subscri = @()
+                }
             } else {
                 $Subscri = @()
             }
@@ -163,11 +185,15 @@ Function Start-ARIGraphExtraction {
             $ResourceContainers = Invoke-ARIInventoryLoop -GraphQuery $GraphQuery -FSubscri $Subscri -LoopName 'Subscriptions and Resource Groups'
 
             # Safely access ResourceContainers.count - handle null/empty cases
-            if ($null -ne $ResourceContainers) {
+            if ($null -ne $ResourceContainers -and $ResourceContainers -is [System.Array]) {
                 $ContainerCount = $ResourceContainers.count
             } else {
                 $ContainerCount = 0
-                $ResourceContainers = @()
+                if ($null -eq $ResourceContainers) {
+                    $ResourceContainers = @()
+                } else {
+                    $ResourceContainers = @($ResourceContainers)
+                }
             }
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Number of Resource Containers: '+ $ContainerCount)
 
@@ -179,11 +205,15 @@ Function Start-ARIGraphExtraction {
                     $Advisories = Invoke-ARIInventoryLoop -GraphQuery $GraphQuery -FSubscri $Subscri -LoopName 'Advisories'
 
                     # Safely access Advisories.count - handle null/empty cases
-                    if ($null -ne $Advisories) {
+                    if ($null -ne $Advisories -and $Advisories -is [System.Array]) {
                         $AdvisorCount = $Advisories.count
                     } else {
                         $AdvisorCount = 0
-                        $Advisories = @()
+                        if ($null -eq $Advisories) {
+                            $Advisories = @()
+                        } else {
+                            $Advisories = @($Advisories)
+                        }
                     }
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Number of Advisors: '+ $AdvisorCount)
                 }
@@ -195,11 +225,15 @@ Function Start-ARIGraphExtraction {
                     $Security = Invoke-ARIInventoryLoop -GraphQuery $GraphQuery -FSubscri $Subscri -LoopName 'Security Center'
 
                     # Safely access Security.count - handle null/empty cases
-                    if ($null -ne $Security) {
+                    if ($null -ne $Security -and $Security -is [System.Array]) {
                         $SecurityCount = $Security.count
                     } else {
                         $SecurityCount = 0
-                        $Security = @()
+                        if ($null -eq $Security) {
+                            $Security = @()
+                        } else {
+                            $Security = @($Security)
+                        }
                     }
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Number of Security Center Advisors: '+ $SecurityCount)
                 } else {
@@ -232,11 +266,15 @@ Function Start-ARIGraphExtraction {
     }
 
     # Safely access ResourceRetirements.count - handle null/empty cases
-    if ($null -ne $ResourceRetirements) {
+    if ($null -ne $ResourceRetirements -and $ResourceRetirements -is [System.Array]) {
         $RetirementCount = $ResourceRetirements.count
     } else {
         $RetirementCount = 0
-        $ResourceRetirements = @()
+        if ($null -eq $ResourceRetirements) {
+            $ResourceRetirements = @()
+        } else {
+            $ResourceRetirements = @($ResourceRetirements)
+        }
     }
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Number of Retirements: '+ $RetirementCount)
