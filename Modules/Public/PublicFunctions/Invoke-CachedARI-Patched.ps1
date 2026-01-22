@@ -827,8 +827,16 @@ Function Invoke-CachedARI-Patched {
         } elseif ($Resources -isnot [System.Array]) {
             $Resources = @($Resources)
         }
-        $resourcesForJob = if ($Resources.Count -gt 0) { $Resources } else { @() }
-        Write-Debug "[UseExistingCache] Passing $($resourcesForJob.Count) resource(s) to Start-ARIExtraJobs for subscription job"
+        # Safely get Resources count
+        $resourcesCount = if ($null -ne $Resources -and ($Resources -is [System.Array] -or $Resources -is [System.Collections.ICollection])) {
+            $Resources.Count
+        } elseif ($null -ne $Resources) {
+            1
+        } else {
+            0
+        }
+        $resourcesForJob = if ($resourcesCount -gt 0) { $Resources } else { @() }
+        Write-Debug "[UseExistingCache] Passing $resourcesCount resource(s) to Start-ARIExtraJobs for subscription job"
         
         # Ensure Subscriptions is initialized and is an array for the subscription job
         if ($null -eq $Subscriptions) {
@@ -836,12 +844,20 @@ Function Invoke-CachedARI-Patched {
         } elseif ($Subscriptions -isnot [System.Array]) {
             $Subscriptions = @($Subscriptions)
         }
-        Write-Debug "[UseExistingCache] Passing $($Subscriptions.Count) subscription(s) to Start-ARIExtraJobs"
+        # Safely get Subscriptions count
+        $subscriptionsCountForJob = if ($null -ne $Subscriptions -and ($Subscriptions -is [System.Array] -or $Subscriptions -is [System.Collections.ICollection])) {
+            $Subscriptions.Count
+        } elseif ($null -ne $Subscriptions) {
+            1
+        } else {
+            0
+        }
+        Write-Debug "[UseExistingCache] Passing $subscriptionsCountForJob subscription(s) to Start-ARIExtraJobs"
         
         # Still run Start-ARIExtraJobs to create jobs needed for reporting (Subscriptions, etc.)
         # but skip diagram and other resource-intensive jobs
         try {
-            Write-Debug "[UseExistingCache] Calling Start-ARIExtraJobs with Subscriptions=$($Subscriptions.Count), Resources=$($resourcesForJob.Count)"
+            Write-Debug "[UseExistingCache] Calling Start-ARIExtraJobs with Subscriptions=$subscriptionsCountForJob, Resources=$resourcesCount"
             Start-ARIExtraJobs -SkipDiagram $SkipDiagram -SkipAdvisory $SkipAdvisory -SkipPolicy $SkipPolicy -SecurityCenter $Security -Subscriptions $Subscriptions -Resources $resourcesForJob -Advisories $Advisories -DDFile $DDFile -DiagramCache $DiagramCache -FullEnv $FullEnv -ResourceContainers $ResourceContainers -Security $Security -PolicyAssign $PolicyAssign -PolicySetDef $PolicySetDef -PolicyDef $PolicyDef -IncludeCosts $IncludeCosts -CostData $CostData -Automation $Automation
             Write-Debug "[UseExistingCache] Start-ARIExtraJobs completed successfully"
         } catch {
