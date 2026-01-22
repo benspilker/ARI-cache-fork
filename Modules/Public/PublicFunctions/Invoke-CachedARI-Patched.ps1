@@ -416,26 +416,51 @@ Function Invoke-CachedARI-Patched {
                 Write-Host "[UseExistingCache] Loading Policy data from cache file: $policyCacheFile" -ForegroundColor Cyan
                 try {
                     $policyCacheData = Get-Content $policyCacheFile -Raw | ConvertFrom-Json
-                    # Policy cache file contains processed Policy job results (array of policy records)
-                    # We need to recreate PolicyAssign, PolicyDef, PolicySetDef from this
-                    # For now, mark that we have Policy data and it will be processed via Start-ARIExtraJobs
-                    # Safely get count - handle array, PSCustomObject, or other types
-                    $policyCacheCount = 0
-                    if ($null -ne $policyCacheData) {
-                        if ($policyCacheData -is [System.Array]) {
-                            $policyCacheCount = $policyCacheData.Count
-                        } elseif ($policyCacheData -is [PSCustomObject]) {
-                            $policyCacheCount = 1
-                        } else {
-                            try {
-                                $policyCacheCount = $policyCacheData.Count
-                            } catch {
-                                $policyCacheCount = 1
+                    
+                    # Check if Policy.json contains raw Policy data (PolicyAssign/PolicyDef/PolicySetDef) or processed results
+                    if ($policyCacheData.PSObject.Properties['PolicyAssign'] -or $policyCacheData.PSObject.Properties['PolicyDef']) {
+                        # Raw Policy data structure - extract it
+                        $PolicyAssign = $policyCacheData.PolicyAssign
+                        $PolicyDef = $policyCacheData.PolicyDef
+                        $PolicySetDef = $policyCacheData.PolicySetDef
+                        
+                        # Ensure arrays
+                        if ($null -eq $PolicyDef) { $PolicyDef = @() }
+                        if ($null -eq $PolicySetDef) { $PolicySetDef = @() }
+                        
+                        # Get count for logging
+                        $policyCount = 0
+                        if ($null -ne $PolicyAssign) {
+                            if ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
+                                if ($PolicyAssign.policyAssignments -is [System.Array]) {
+                                    $policyCount = $PolicyAssign.policyAssignments.Count
+                                }
+                            } elseif ($PolicyAssign -is [System.Array]) {
+                                $policyCount = $PolicyAssign.Count
                             }
                         }
+                        
+                        Write-Host "[UseExistingCache] Loaded Policy data from cache ($policyCount assignment(s), $($PolicyDef.Count) definition(s), $($PolicySetDef.Count) set definition(s))" -ForegroundColor Green
+                        $hasPolicyData = $true
+                    } else {
+                        # Processed Policy results (array) - mark as available but will be processed by Policy job
+                        $policyCacheCount = 0
+                        if ($null -ne $policyCacheData) {
+                            if ($policyCacheData -is [System.Array]) {
+                                $policyCacheCount = $policyCacheData.Count
+                            } elseif ($policyCacheData -is [PSCustomObject]) {
+                                $policyCacheCount = 1
+                            } else {
+                                try {
+                                    $policyCacheCount = $policyCacheData.Count
+                                } catch {
+                                    $policyCacheCount = 1
+                                }
+                            }
+                        }
+                        Write-Host "[UseExistingCache] Loaded Policy cache file ($policyCacheCount policy record(s))" -ForegroundColor Green
+                        # Policy data will be loaded when Start-ARIExtraJobs processes the Policy job
                     }
-                    Write-Host "[UseExistingCache] Loaded Policy cache file ($policyCacheCount policy record(s))" -ForegroundColor Green
-                    # Policy data will be loaded when Start-ARIExtraJobs processes the Policy job
                 } catch {
                     Write-Host "[UseExistingCache] Warning: Failed to load Policy cache file: $_" -ForegroundColor Yellow
                 }
@@ -701,53 +726,224 @@ Function Invoke-CachedARI-Patched {
             }
             
             if (-not $skipPolicyValue -and -not $hasPolicyData) {
-                Write-Host "[UseExistingCache] Collecting Policy data via API (cache file not found)..." -ForegroundColor Cyan
-                
-                # Aggressive memory cleanup BEFORE Policy API call
-                Write-Host "[UseExistingCache] Running extreme memory cleanup before Policy API call..." -ForegroundColor Gray
-                [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $false)
-                [System.GC]::WaitForPendingFinalizers()
-                [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
-                Start-Sleep -Milliseconds 500
-                
+                # Check available memory before attempting Policy collection
+                # If we're already low on memory, skip Policy collection to avoid OOM
+                $skipPolicyDueToMemory = $false
                 try {
-                    # Create a switch parameter for SkipPolicy (Get-ARIAPIResources expects a switch)
-                    $skipPolicySwitch = [switch]$false
-                    $APIResults = Get-ARIAPIResources -Subscriptions $Subscriptions -AzureEnvironment $AzureEnvironment -SkipPolicy:$skipPolicySwitch
-                    $PolicyAssign = $APIResults.PolicyAssign
-                    $PolicyDef = $APIResults.PolicyDef
-                    $PolicySetDef = $APIResults.PolicySetDef
-                    # Safely access Count property - handle null/empty cases
-                    if ($null -ne $PolicyAssign) {
-                        if ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
-                            if ($PolicyAssign.policyAssignments -is [System.Array]) {
-                                $PolicyCount = [string]$PolicyAssign.policyAssignments.Count
-                            } else {
-                                $PolicyCount = "0"
+                    # Try Linux /proc/meminfo first (Windmill runs on Linux)
+                    if (Test-Path "/proc/meminfo") {
+                        $memInfo = Get-Content "/proc/meminfo" | Select-String -Pattern "MemAvailable|MemFree"
+                        if ($memInfo) {
+                            $memAvailableLine = $memInfo | Where-Object { $_ -match "MemAvailable" }
+                            if (-not $memAvailableLine) {
+                                $memAvailableLine = $memInfo | Where-Object { $_ -match "MemFree" }
                             }
-                        } elseif ($PolicyAssign -is [System.Array]) {
-                            $PolicyCount = if ($null -ne $PolicyAssign -and $PolicyAssign -is [System.Array]) { [string]$PolicyAssign.Count } else { "0" }
-                        } else {
-                            $PolicyCount = "1"
+                            if ($memAvailableLine -match "(\d+)") {
+                                $availableKB = [int]$matches[1]
+                                $availableMB = [math]::Round($availableKB / 1024, 2)
+                                Write-Host "[UseExistingCache] Available memory: $availableMB MB" -ForegroundColor Gray
+                                
+                                # Skip Policy collection if less than 500MB free (conservative threshold for Windmill)
+                                if ($availableMB -lt 500) {
+                                    Write-Host "[UseExistingCache] WARNING: Low memory detected ($availableMB MB free). Skipping Policy collection to prevent OOM." -ForegroundColor Yellow
+                                    Write-Host "[UseExistingCache] Policy data will not be included in this report. Consider collecting Policy data during batch processing." -ForegroundColor Yellow
+                                    $skipPolicyDueToMemory = $true
+                                }
+                            }
                         }
                     } else {
-                        $PolicyCount = "0"
+                        # Try WMI (Windows)
+                        $memInfo = Get-WmiObject Win32_OperatingSystem -ErrorAction SilentlyContinue
+                        if ($null -ne $memInfo) {
+                            $availableMB = [math]::Round($memInfo.FreePhysicalMemory / 1024, 2)
+                            $totalMB = [math]::Round($memInfo.TotalVisibleMemorySize / 1024, 2)
+                            $percentFree = [math]::Round(($availableMB / $totalMB) * 100, 2)
+                            Write-Host "[UseExistingCache] Available memory: $availableMB MB ($percentFree% free)" -ForegroundColor Gray
+                            
+                            if ($availableMB -lt 500) {
+                                Write-Host "[UseExistingCache] WARNING: Low memory detected ($availableMB MB free). Skipping Policy collection to prevent OOM." -ForegroundColor Yellow
+                                Write-Host "[UseExistingCache] Policy data will not be included in this report. Consider collecting Policy data during batch processing." -ForegroundColor Yellow
+                                $skipPolicyDueToMemory = $true
+                            }
+                        }
                     }
-                    Write-Host "[UseExistingCache] Collected $PolicyCount Policy assignment(s) via API call" -ForegroundColor Green
-                    Remove-Variable -Name APIResults -ErrorAction SilentlyContinue
-                    
-                    # Aggressive memory cleanup after Policy API call
-                    Write-Host "[UseExistingCache] Running memory cleanup after Policy API call..." -ForegroundColor Gray
-                    [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $false)
-                    [System.GC]::WaitForPendingFinalizers()
-                    [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
-                    Start-Sleep -Milliseconds 500
                 } catch {
-                    Write-Host "[UseExistingCache] Warning: Failed to collect Policy data: $_" -ForegroundColor Yellow
+                    Write-Host "[UseExistingCache] Warning: Could not check available memory: $_" -ForegroundColor Yellow
+                }
+                
+                if ($skipPolicyDueToMemory) {
                     $PolicyAssign = @{ policyAssignments = @() }
                     $PolicyDef = @()
                     $PolicySetDef = @()
                     $PolicyCount = 0
+                } else {
+                            Write-Host "[UseExistingCache] Collecting Policy data via API (cache file not found)..." -ForegroundColor Cyan
+                            
+                            # EXTREME memory cleanup BEFORE Policy API call (multiple iterations)
+                            Write-Host "[UseExistingCache] Running EXTREME memory cleanup before Policy API call..." -ForegroundColor Gray
+                            try {
+                                Get-Job | Remove-Job -Force -ErrorAction SilentlyContinue
+                                for ($i = 1; $i -le 10; $i++) {
+                                    [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $false)
+                                    [System.GC]::WaitForPendingFinalizers()
+                                    [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
+                                }
+                                Clear-ARIMemory
+                                Start-Sleep -Milliseconds 1000  # Give system time to free memory
+                            } catch {
+                                Write-Host "[UseExistingCache] Warning: Pre-Policy cleanup had issues: $_" -ForegroundColor Yellow
+                            }
+                            
+                            try {
+                                # Create a switch parameter for SkipPolicy (Get-ARIAPIResources expects a switch)
+                                $skipPolicySwitch = [switch]$false
+                                $APIResults = Get-ARIAPIResources -Subscriptions $Subscriptions -AzureEnvironment $AzureEnvironment -SkipPolicy:$skipPolicySwitch
+                                $PolicyAssign = $APIResults.PolicyAssign
+                                $PolicyDef = $APIResults.PolicyDef
+                                $PolicySetDef = $APIResults.PolicySetDef
+                                # Safely access Count property - handle null/empty cases
+                                if ($null -ne $PolicyAssign) {
+                                    if ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
+                                        if ($PolicyAssign.policyAssignments -is [System.Array]) {
+                                            $PolicyCount = [string]$PolicyAssign.policyAssignments.Count
+                                        } else {
+                                            $PolicyCount = "0"
+                                        }
+                                    } elseif ($PolicyAssign -is [System.Array]) {
+                                        $PolicyCount = if ($null -ne $PolicyAssign -and $PolicyAssign -is [System.Array]) { [string]$PolicyAssign.Count } else { "0" }
+                                    } else {
+                                        $PolicyCount = "1"
+                                    }
+                                } else {
+                                    $PolicyCount = "0"
+                                }
+                                Write-Host "[UseExistingCache] Collected $PolicyCount Policy assignment(s) via API call" -ForegroundColor Green
+                                Remove-Variable -Name APIResults -ErrorAction SilentlyContinue
+                                
+                                # Aggressive memory cleanup after Policy API call
+                                Write-Host "[UseExistingCache] Running memory cleanup after Policy API call..." -ForegroundColor Gray
+                                [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $false)
+                                [System.GC]::WaitForPendingFinalizers()
+                                [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
+                                Start-Sleep -Milliseconds 500
+                            } catch {
+                                Write-Host "[UseExistingCache] Warning: Failed to collect Policy data: $_" -ForegroundColor Yellow
+                                $PolicyAssign = @{ policyAssignments = @() }
+                                $PolicyDef = @()
+                                $PolicySetDef = @()
+                                $PolicyCount = 0
+                            }
+                        }
+                    } else {
+                        # WMI not available (Linux), proceed with Policy collection but with extra cleanup
+                        Write-Host "[UseExistingCache] Collecting Policy data via API (cache file not found, memory check unavailable)..." -ForegroundColor Cyan
+                        
+                        # EXTREME memory cleanup BEFORE Policy API call
+                        Write-Host "[UseExistingCache] Running EXTREME memory cleanup before Policy API call..." -ForegroundColor Gray
+                        try {
+                            Get-Job | Remove-Job -Force -ErrorAction SilentlyContinue
+                            for ($i = 1; $i -le 10; $i++) {
+                                [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $false)
+                                [System.GC]::WaitForPendingFinalizers()
+                                [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
+                            }
+                            Clear-ARIMemory
+                            Start-Sleep -Milliseconds 1000
+                        } catch {
+                            Write-Host "[UseExistingCache] Warning: Pre-Policy cleanup had issues: $_" -ForegroundColor Yellow
+                        }
+                        
+                        try {
+                            $skipPolicySwitch = [switch]$false
+                            $APIResults = Get-ARIAPIResources -Subscriptions $Subscriptions -AzureEnvironment $AzureEnvironment -SkipPolicy:$skipPolicySwitch
+                            $PolicyAssign = $APIResults.PolicyAssign
+                            $PolicyDef = $APIResults.PolicyDef
+                            $PolicySetDef = $APIResults.PolicySetDef
+                            if ($null -ne $PolicyAssign) {
+                                if ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
+                                    if ($PolicyAssign.policyAssignments -is [System.Array]) {
+                                        $PolicyCount = [string]$PolicyAssign.policyAssignments.Count
+                                    } else {
+                                        $PolicyCount = "0"
+                                    }
+                                } elseif ($PolicyAssign -is [System.Array]) {
+                                    $PolicyCount = if ($null -ne $PolicyAssign -and $PolicyAssign -is [System.Array]) { [string]$PolicyAssign.Count } else { "0" }
+                                } else {
+                                    $PolicyCount = "1"
+                                }
+                            } else {
+                                $PolicyCount = "0"
+                            }
+                            Write-Host "[UseExistingCache] Collected $PolicyCount Policy assignment(s) via API call" -ForegroundColor Green
+                            Remove-Variable -Name APIResults -ErrorAction SilentlyContinue
+                            
+                            [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $false)
+                            [System.GC]::WaitForPendingFinalizers()
+                            [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
+                            Start-Sleep -Milliseconds 500
+                        } catch {
+                            Write-Host "[UseExistingCache] Warning: Failed to collect Policy data: $_" -ForegroundColor Yellow
+                            $PolicyAssign = @{ policyAssignments = @() }
+                            $PolicyDef = @()
+                            $PolicySetDef = @()
+                            $PolicyCount = 0
+                        }
+                    }
+                } catch {
+                    # Memory check failed, proceed with Policy collection but log warning
+                    Write-Host "[UseExistingCache] Warning: Could not check available memory: $_" -ForegroundColor Yellow
+                    Write-Host "[UseExistingCache] Proceeding with Policy collection (may fail if memory is low)..." -ForegroundColor Yellow
+                    
+                    # EXTREME memory cleanup BEFORE Policy API call
+                    Write-Host "[UseExistingCache] Running EXTREME memory cleanup before Policy API call..." -ForegroundColor Gray
+                    try {
+                        Get-Job | Remove-Job -Force -ErrorAction SilentlyContinue
+                        for ($i = 1; $i -le 10; $i++) {
+                            [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $false)
+                            [System.GC]::WaitForPendingFinalizers()
+                            [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
+                        }
+                        Clear-ARIMemory
+                        Start-Sleep -Milliseconds 1000
+                    } catch {
+                        Write-Host "[UseExistingCache] Warning: Pre-Policy cleanup had issues: $_" -ForegroundColor Yellow
+                    }
+                    
+                    try {
+                        $skipPolicySwitch = [switch]$false
+                        $APIResults = Get-ARIAPIResources -Subscriptions $Subscriptions -AzureEnvironment $AzureEnvironment -SkipPolicy:$skipPolicySwitch
+                        $PolicyAssign = $APIResults.PolicyAssign
+                        $PolicyDef = $APIResults.PolicyDef
+                        $PolicySetDef = $APIResults.PolicySetDef
+                        if ($null -ne $PolicyAssign) {
+                            if ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
+                                if ($PolicyAssign.policyAssignments -is [System.Array]) {
+                                    $PolicyCount = [string]$PolicyAssign.policyAssignments.Count
+                                } else {
+                                    $PolicyCount = "0"
+                                }
+                            } elseif ($PolicyAssign -is [System.Array]) {
+                                $PolicyCount = if ($null -ne $PolicyAssign -and $PolicyAssign -is [System.Array]) { [string]$PolicyAssign.Count } else { "0" }
+                            } else {
+                                $PolicyCount = "1"
+                            }
+                        } else {
+                            $PolicyCount = "0"
+                        }
+                        Write-Host "[UseExistingCache] Collected $PolicyCount Policy assignment(s) via API call" -ForegroundColor Green
+                        Remove-Variable -Name APIResults -ErrorAction SilentlyContinue
+                        
+                        [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $false)
+                        [System.GC]::WaitForPendingFinalizers()
+                        [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
+                        Start-Sleep -Milliseconds 500
+                    } catch {
+                        Write-Host "[UseExistingCache] Warning: Failed to collect Policy data: $_" -ForegroundColor Yellow
+                        $PolicyAssign = @{ policyAssignments = @() }
+                        $PolicyDef = @()
+                        $PolicySetDef = @()
+                        $PolicyCount = 0
+                    }
                 }
             } elseif (-not $skipPolicyValue -and $hasPolicyData) {
                 Write-Host "[UseExistingCache] Using Policy data from cache file" -ForegroundColor Green

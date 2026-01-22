@@ -50,6 +50,20 @@ Function Start-ARIReporOrchestration {
         throw
     }
 
+    # Aggressive memory cleanup between Excel phases to prevent OOM
+    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Running aggressive memory cleanup after Start-ARIExcelJob.')
+    try {
+        Get-Job | Remove-Job -Force -ErrorAction SilentlyContinue
+        for ($i = 1; $i -le 5; $i++) {
+            [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $false)
+            [System.GC]::WaitForPendingFinalizers()
+            [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
+        }
+        Clear-ARIMemory
+    } catch {
+        Write-Debug "  Warning: Memory cleanup after Start-ARIExcelJob had issues: $_"
+    }
+
     <############################################################## REPORT EXTRA DETAILS ###################################################################>
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Starting Reporting Extra Details.')
@@ -68,6 +82,20 @@ Function Start-ARIReporOrchestration {
         Write-Error $errorMsg
         Write-Error "Stack trace: $errorStack"
         throw
+    }
+
+    # Aggressive memory cleanup between Excel phases to prevent OOM
+    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Running aggressive memory cleanup after Start-ARIExcelExtraData.')
+    try {
+        Get-Job | Remove-Job -Force -ErrorAction SilentlyContinue
+        for ($i = 1; $i -le 5; $i++) {
+            [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $false)
+            [System.GC]::WaitForPendingFinalizers()
+            [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
+        }
+        Clear-ARIMemory
+    } catch {
+        Write-Debug "  Warning: Memory cleanup after Start-ARIExcelExtraData had issues: $_"
     }
 
     <############################################################## EXTRA REPORTS ###################################################################>
