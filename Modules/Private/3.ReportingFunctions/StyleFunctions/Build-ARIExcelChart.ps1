@@ -126,53 +126,67 @@ function Build-ARIExcelChart {
                 $P0Name = $null
             }
     }
-    elseif (($Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Outages' }) -and $Overview -eq 1) {
-        $P0Name = 'Outages'
-        $PTParams = @{
-            PivotTableName          = "P0"
-            Address                 = $excel.Overview.cells["BG5"] # top-left corner of the table
-            SourceWorkSheet         = $excel.'Outages'
-            PivotRows               = @("Impacted Services")
-            PivotData               = @{"Impacted Services" = "Count" }
-            PivotTableStyle         = $tableStyle
-            IncludePivotChart       = $true
-            ChartType               = "BarStacked3D"
-            ChartRow                = 13 # place the chart below row 22nd
-            ChartColumn             = 2
-            Activate                = $true
-            PivotFilter             = 'Subscription'
-            ChartTitle              = 'Outages (Last 6 Months)'
-            ShowPercent             = $true
-            ChartHeight             = 275
-            ChartWidth              = 445
-            ChartRowOffSetPixels    = 5
-            ChartColumnOffSetPixels = 5
+    elseif (($Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Outages' }) -and $Overview -eq 1) {
+        # Safely check if Outages worksheet exists before accessing
+        $OutagesWS = $Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Outages' } | Select-Object -First 1
+        if ($null -ne $OutagesWS) {
+            $P0Name = 'Outages'
+            $PTParams = @{
+                PivotTableName          = "P0"
+                Address                 = $excel.Overview.cells["BG5"] # top-left corner of the table
+                SourceWorkSheet         = $OutagesWS
+                PivotRows               = @("Impacted Services")
+                PivotData               = @{"Impacted Services" = "Count" }
+                PivotTableStyle         = $tableStyle
+                IncludePivotChart       = $true
+                ChartType               = "BarStacked3D"
+                ChartRow                = 13 # place the chart below row 22nd
+                ChartColumn             = 2
+                Activate                = $true
+                PivotFilter             = 'Subscription'
+                ChartTitle              = 'Outages (Last 6 Months)'
+                ShowPercent             = $true
+                ChartHeight             = 275
+                ChartWidth              = 445
+                ChartRowOffSetPixels    = 5
+                ChartColumnOffSetPixels = 5
+            }
+            Add-PivotTable @PTParams -NoLegend
+        } else {
+            Write-Debug "  Warning: Outages worksheet not found - skipping P0 Outages PivotTable"
+            $P0Name = $null
         }
-        Add-PivotTable @PTParams -NoLegend
     }
-    elseif (($Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Advisor' }) -and $Overview -eq 2) {
-        $P0Name = 'Advisories'
-        $PTParams = @{
-            PivotTableName          = "P0"
-            Address                 = $excel.Overview.cells["BG5"] # top-left corner of the table
-            SourceWorkSheet         = $excel.Advisor
-            PivotRows               = @("Category")
-            PivotData               = @{"Category" = "Count" }
-            PivotTableStyle         = $tableStyle
-            IncludePivotChart       = $true
-            ChartType               = "BarStacked3D"
-            ChartRow                = 13 # place the chart below row 22nd
-            ChartColumn             = 2
-            Activate                = $true
-            PivotFilter             = 'Impact'
-            ChartTitle              = 'Advisor'
-            ShowPercent             = $true
-            ChartHeight             = 275
-            ChartWidth              = 445
-            ChartRowOffSetPixels    = 5
-            ChartColumnOffSetPixels = 5
+    elseif (($Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Advisor' }) -and $Overview -eq 2) {
+        # Safely check if Advisor worksheet exists before accessing
+        $AdvisorWS = $Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Advisor' } | Select-Object -First 1
+        if ($null -ne $AdvisorWS) {
+            $P0Name = 'Advisories'
+            $PTParams = @{
+                PivotTableName          = "P0"
+                Address                 = $excel.Overview.cells["BG5"] # top-left corner of the table
+                SourceWorkSheet         = $AdvisorWS
+                PivotRows               = @("Category")
+                PivotData               = @{"Category" = "Count" }
+                PivotTableStyle         = $tableStyle
+                IncludePivotChart       = $true
+                ChartType               = "BarStacked3D"
+                ChartRow                = 13 # place the chart below row 22nd
+                ChartColumn             = 2
+                Activate                = $true
+                PivotFilter             = 'Impact'
+                ChartTitle              = 'Advisor'
+                ShowPercent             = $true
+                ChartHeight             = 275
+                ChartWidth              = 445
+                ChartRowOffSetPixels    = 5
+                ChartColumnOffSetPixels = 5
+            }
+            Add-PivotTable @PTParams -NoLegend
+        } else {
+            Write-Debug "  Warning: Advisor worksheet not found - skipping P0 Advisories PivotTable"
+            $P0Name = $null
         }
-        Add-PivotTable @PTParams -NoLegend
     }
     else {
         # Safely check if Public IPs worksheet exists before accessing
@@ -510,53 +524,67 @@ function Build-ARIExcelChart {
     $DrawP3 = $WS.Drawings | Where-Object { $_.Name -eq 'TP3' }
     $DrawP3.RichText.Add($P3Name) | Out-Null
 
-    if (($Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Outages' }) -and $Overview -eq 1) {
-        $P4Name = 'Outages'
-        $PTParams = @{
-            PivotTableName          = "P4"
-            Address                 = $excel.Overview.cells["CF5"] # top-left corner of the table
-            SourceWorkSheet         = $excel.'Outages'
-            PivotRows               = @("Subscription")
-            PivotData               = @{"Outage ID" = "Count" }
-            PivotTableStyle         = $tableStyle
-            IncludePivotChart       = $true
-            ChartType               = "ColumnStacked3D"
-            ChartRow                = 47 # place the chart below row 22nd
-            ChartColumn             = 11
-            Activate                = $true
-            PivotFilter             = 'Event Level'
-            ChartTitle              = 'Outages per Subscription'
-            ShowPercent             = $true
-            ChartHeight             = 255
-            ChartWidth              = 315
-            ChartRowOffSetPixels    = 5
-            ChartColumnOffSetPixels = 5
+    if (($Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Outages' }) -and $Overview -eq 1) {
+        # Safely check if Outages worksheet exists before accessing
+        $OutagesWS = $Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Outages' } | Select-Object -First 1
+        if ($null -ne $OutagesWS) {
+            $P4Name = 'Outages'
+            $PTParams = @{
+                PivotTableName          = "P4"
+                Address                 = $excel.Overview.cells["CF5"] # top-left corner of the table
+                SourceWorkSheet         = $OutagesWS
+                PivotRows               = @("Subscription")
+                PivotData               = @{"Outage ID" = "Count" }
+                PivotTableStyle         = $tableStyle
+                IncludePivotChart       = $true
+                ChartType               = "ColumnStacked3D"
+                ChartRow                = 47 # place the chart below row 22nd
+                ChartColumn             = 11
+                Activate                = $true
+                PivotFilter             = 'Event Level'
+                ChartTitle              = 'Outages per Subscription'
+                ShowPercent             = $true
+                ChartHeight             = 255
+                ChartWidth              = 315
+                ChartRowOffSetPixels    = 5
+                ChartColumnOffSetPixels = 5
+            }
+            Add-PivotTable @PTParams -NoLegend
+        } else {
+            Write-Debug "  Warning: Outages worksheet not found - skipping P4 Outages PivotTable"
+            $P4Name = $null
         }
-        Add-PivotTable @PTParams -NoLegend
     }
-    elseif (($Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Quota Usage' }) -and $Overview -eq 2) {
-        $P4Name = 'Quota Usage'
-        $PTParams = @{
-            PivotTableName          = "P4"
-            Address                 = $excel.Overview.cells["CF5"] # top-left corner of the table
-            SourceWorkSheet         = $excel.'Quota Usage'
-            PivotRows               = @("Region")
-            PivotData               = @{"vCPUs Available" = "Sum" }
-            PivotTableStyle         = $tableStyle
-            IncludePivotChart       = $true
-            ChartType               = "ColumnStacked3D"
-            ChartRow                = 47 # place the chart below row 22nd
-            ChartColumn             = 11
-            Activate                = $true
-            PivotFilter             = 'Limit'
-            ChartTitle              = 'Available Quota (vCPUs)'
-            ShowPercent             = $true
-            ChartHeight             = 255
-            ChartWidth              = 315
-            ChartRowOffSetPixels    = 5
-            ChartColumnOffSetPixels = 5
+    elseif (($Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Quota Usage' }) -and $Overview -eq 2) {
+        # Safely check if Quota Usage worksheet exists before accessing
+        $QuotaUsageWS = $Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Quota Usage' } | Select-Object -First 1
+        if ($null -ne $QuotaUsageWS) {
+            $P4Name = 'Quota Usage'
+            $PTParams = @{
+                PivotTableName          = "P4"
+                Address                 = $excel.Overview.cells["CF5"] # top-left corner of the table
+                SourceWorkSheet         = $QuotaUsageWS
+                PivotRows               = @("Region")
+                PivotData               = @{"vCPUs Available" = "Sum" }
+                PivotTableStyle         = $tableStyle
+                IncludePivotChart       = $true
+                ChartType               = "ColumnStacked3D"
+                ChartRow                = 47 # place the chart below row 22nd
+                ChartColumn             = 11
+                Activate                = $true
+                PivotFilter             = 'Limit'
+                ChartTitle              = 'Available Quota (vCPUs)'
+                ShowPercent             = $true
+                ChartHeight             = 255
+                ChartWidth              = 315
+                ChartRowOffSetPixels    = 5
+                ChartColumnOffSetPixels = 5
+            }
+            Add-PivotTable @PTParams -NoLegend
+        } else {
+            Write-Debug "  Warning: Quota Usage worksheet not found - skipping P4 Quota Usage PivotTable"
+            $P4Name = $null
         }
-        Add-PivotTable @PTParams -NoLegend
     }
     else {
         # Safely check if Disks worksheet exists before accessing
