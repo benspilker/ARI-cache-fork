@@ -23,54 +23,117 @@ function Start-ARIExcelOrdening {
     $Excel = Open-ExcelPackage -Path $File
     $Worksheets = $Excel.Workbook.Worksheets
 
-    $Order = $Worksheets | Where-Object { $_.Name -notin 'Overview','Policy', 'Advisor', 'Security Center', 'Subscriptions', 'Quota Usage', 'AdvisorScore', 'Outages', 'Support Tickets', 'Reservation Advisor' } | Select-Object -Property Index, name, @{N = "Dimension"; E = { $_.dimension.Rows - 1 } } | Sort-Object -Property Dimension -Descending
+    # Safely filter worksheets - ensure Name property exists
+    $Order = $Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -notin 'Overview','Policy', 'Advisor', 'Security Center', 'Subscriptions', 'Quota Usage', 'AdvisorScore', 'Outages', 'Support Tickets', 'Reservation Advisor' } | Select-Object -Property Index, name, @{N = "Dimension"; E = { if ($null -ne $_.dimension) { $_.dimension.Rows - 1 } else { 0 } } } | Sort-Object -Property Dimension -Descending
 
-    $Order0 = $Order | Where-Object { $_.Name -ne $Order[0].name -and $_.Name -ne ($Order | select-object -Last 1).Name }
+    # Safely access Order array elements
+    if ($Order -and $Order.Count -gt 0) {
+        $firstOrderName = if ($null -ne $Order[0] -and $null -ne $Order[0].Name) { $Order[0].Name } else { $null }
+        $lastOrder = $Order | Select-Object -Last 1
+        $lastOrderName = if ($null -ne $lastOrder -and $null -ne $lastOrder.Name) { $lastOrder.Name } else { $null }
+        
+        $Order0 = $Order | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -ne $firstOrderName -and $_.Name -ne $lastOrderName }
 
-    #$Worksheets.MoveAfter(($Order | select-object -Last 1).Name, 'Subscriptions')
+        #$Worksheets.MoveAfter(($Order | select-object -Last 1).Name, 'Subscriptions')
 
-    $Loop = 0
+        $Loop = 0
 
-    Foreach ($Ord in $Order0) {
-        if ($Ord.Index -and $Loop -ne 0) {
-            $Worksheets.MoveAfter($Ord.Name, $Order0[$Loop - 1].Name)
+        Foreach ($Ord in $Order0) {
+            if ($null -ne $Ord -and $null -ne $Ord.Index -and $null -ne $Ord.Name) {
+                if ($Loop -ne 0 -and $null -ne $Order0[$Loop - 1] -and $null -ne $Order0[$Loop - 1].Name) {
+                    try {
+                        $Worksheets.MoveAfter($Ord.Name, $Order0[$Loop - 1].Name)
+                    } catch {
+                        Write-Debug "  Warning: Could not move sheet $($Ord.Name): $_"
+                    }
+                }
+                if ($Loop -eq 0 -and $null -ne $Order[0] -and $null -ne $Order[0].Name) {
+                    try {
+                        $Worksheets.MoveAfter($Ord.Name, $Order[0].Name)
+                    } catch {
+                        Write-Debug "  Warning: Could not move sheet $($Ord.Name): $_"
+                    }
+                }
+            }
+            $Loop++
         }
-        if ($Loop -eq 0) {
-            $Worksheets.MoveAfter($Ord.Name, $Order[0].Name)
-        }
-        $Loop++
     }
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Validating if Advisor and Policies are included.')
-    if (($Worksheets | Where-Object { $_.Name -eq 'Advisor'}))
-        {
-            $Worksheets.MoveAfter('Advisor', 'Overview')
+    # Safely check for worksheets with Name property
+    if ($null -ne $Worksheets) {
+        $advisorSheet = $Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Advisor'} | Select-Object -First 1
+        if ($advisorSheet) {
+            try {
+                $Worksheets.MoveAfter('Advisor', 'Overview')
+            } catch {
+                Write-Debug "  Warning: Could not move Advisor sheet: $_"
+            }
         }
-    if (($Worksheets | Where-Object { $_.Name -eq 'Policy'}))
-        {
-            $Worksheets.MoveAfter('Policy', 'Overview')
+        
+        $policySheet = $Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Policy'} | Select-Object -First 1
+        if ($policySheet) {
+            try {
+                $Worksheets.MoveAfter('Policy', 'Overview')
+            } catch {
+                Write-Debug "  Warning: Could not move Policy sheet: $_"
+            }
         }
-    if (($Worksheets | Where-Object { $_.Name -eq 'Security Center'}))
-        {
-            $Worksheets.MoveAfter('Security Center', 'Overview')
+        
+        $securitySheet = $Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Security Center'} | Select-Object -First 1
+        if ($securitySheet) {
+            try {
+                $Worksheets.MoveAfter('Security Center', 'Overview')
+            } catch {
+                Write-Debug "  Warning: Could not move Security Center sheet: $_"
+            }
         }
-    if (($Worksheets | Where-Object {$_.Name -eq 'Quota Usage'}))
-        {
-            $Worksheets.MoveAfter('Quota Usage', 'Overview')
+        
+        $quotaSheet = $Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Quota Usage'} | Select-Object -First 1
+        if ($quotaSheet) {
+            try {
+                $Worksheets.MoveAfter('Quota Usage', 'Overview')
+            } catch {
+                Write-Debug "  Warning: Could not move Quota Usage sheet: $_"
+            }
         }
-    if (($Worksheets | Where-Object {$_.Name -eq 'AdvisorScore'}))
-        {
-            $Worksheets.MoveAfter('AdvisorScore', 'Overview')
+        
+        $advisorScoreSheet = $Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'AdvisorScore'} | Select-Object -First 1
+        if ($advisorScoreSheet) {
+            try {
+                $Worksheets.MoveAfter('AdvisorScore', 'Overview')
+            } catch {
+                Write-Debug "  Warning: Could not move AdvisorScore sheet: $_"
+            }
         }
-    if (($Worksheets | Where-Object {$_.Name -eq 'Support Tickets'}))
-        {
-            $Worksheets.MoveAfter('Support Tickets', 'Overview')
+        
+        $supportTicketsSheet = $Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Support Tickets'} | Select-Object -First 1
+        if ($supportTicketsSheet) {
+            try {
+                $Worksheets.MoveAfter('Support Tickets', 'Overview')
+            } catch {
+                Write-Debug "  Warning: Could not move Support Tickets sheet: $_"
+            }
         }
-    if (($Worksheets | Where-Object {$_.Name -eq 'Reservation Advisor'}))
-        {
-            $Worksheets.MoveAfter('Reservation Advisor', 'Overview')
+        
+        $reservationSheet = $Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Reservation Advisor'} | Select-Object -First 1
+        if ($reservationSheet) {
+            try {
+                $Worksheets.MoveAfter('Reservation Advisor', 'Overview')
+            } catch {
+                Write-Debug "  Warning: Could not move Reservation Advisor sheet: $_"
+            }
         }
-    $Worksheets.MoveAfter('Subscriptions','Overview')
+        
+        $subscriptionsSheet = $Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Subscriptions'} | Select-Object -First 1
+        if ($subscriptionsSheet) {
+            try {
+                $Worksheets.MoveAfter('Subscriptions','Overview')
+            } catch {
+                Write-Debug "  Warning: Could not move Subscriptions sheet: $_"
+            }
+        }
+    }
 
     $WS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Overview' }
 
