@@ -20,17 +20,18 @@ Authors: Claudio Merola
 function Start-ARISubscriptionJob {
     param($Subscriptions, $Resources, $CostData)
 
-    # Ensure Subscriptions is an array for safe .Count access
-    if ($null -eq $Subscriptions) {
-        $Subscriptions = @()
-    } elseif ($Subscriptions -isnot [System.Array]) {
-        $Subscriptions = @($Subscriptions)
-    }
+    try {
+        # Ensure Subscriptions is an array for safe .Count access
+        if ($null -eq $Subscriptions) {
+            $Subscriptions = @()
+        } elseif ($Subscriptions -isnot [System.Array]) {
+            $Subscriptions = @($Subscriptions)
+        }
 
-    # Debug: Log what we received
-    $resourcesCount = if ($null -ne $Resources -and $Resources -is [System.Array]) { $Resources.Count } elseif ($null -ne $Resources) { 1 } else { 0 }
-    $subscriptionsCount = if ($null -ne $Subscriptions -and $Subscriptions -is [System.Array]) { $Subscriptions.Count } elseif ($null -ne $Subscriptions) { 1 } else { 0 }
-    Write-Debug "Start-ARISubscriptionJob: Received $resourcesCount resource(s), $subscriptionsCount subscription(s)"
+        # Debug: Log what we received
+        $resourcesCount = if ($null -ne $Resources -and $Resources -is [System.Array]) { $Resources.Count } elseif ($null -ne $Resources) { 1 } else { 0 }
+        $subscriptionsCount = if ($null -ne $Subscriptions -and $Subscriptions -is [System.Array]) { $Subscriptions.Count } elseif ($null -ne $Subscriptions) { 1 } else { 0 }
+        Write-Debug "Start-ARISubscriptionJob: Received $resourcesCount resource(s), $subscriptionsCount subscription(s)"
 
     if ([string]::IsNullOrEmpty($CostData))
         {
@@ -80,9 +81,36 @@ function Start-ARISubscriptionJob {
             # Initialize FormattedTable as empty array to ensure it's always an array
             $FormattedTable = @()
             if ($null -ne $ResTable3) {
-                $FormattedTable = foreach ($ResourcesSUB in $ResTable3) 
+                # Ensure ResTable3 is an array (Group-Object can return single object)
+                $ResTable3Array = if ($ResTable3 -is [System.Array]) { $ResTable3 } else { @($ResTable3) }
+                
+                $FormattedTable = foreach ($ResourcesSUB in $ResTable3Array) 
                     {
+                        # Safely get ResourcesSUB.Count - Group-Object results have Count property
+                        $resourcesSubCount = 0
+                        if ($null -ne $ResourcesSUB) {
+                            if ($ResourcesSUB -is [Microsoft.PowerShell.Commands.GroupInfo]) {
+                                $resourcesSubCount = $ResourcesSUB.Count
+                            } elseif ($ResourcesSUB -is [System.Collections.ICollection]) {
+                                $resourcesSubCount = $ResourcesSUB.Count
+                            } else {
+                                # Try to access Count property safely
+                                try {
+                                    $resourcesSubCount = $ResourcesSUB.Count
+                                } catch {
+                                    $resourcesSubCount = 1  # Default to 1 if Count not available
+                                }
+                            }
+                        }
+                        
                         $ResourceDetails = $ResourcesSUB.name -split ", "
+                        # Ensure ResourceDetails is an array
+                        if ($null -eq $ResourceDetails) {
+                            $ResourceDetails = @()
+                        } elseif ($ResourceDetails -isnot [System.Array]) {
+                            $ResourceDetails = @($ResourceDetails)
+                        }
+                        
                         if ($ResourceDetails.Count -ge 4) {
                             $subId = $ResourceDetails[3]
                             $SubName = $Subscriptions | Where-Object { 
@@ -98,7 +126,7 @@ function Start-ARISubscriptionJob {
                                 'Resource Group'    = if ($ResourceDetails.Count -ge 3) { $ResourceDetails[2] } else { '' }
                                 'Location'          = if ($ResourceDetails.Count -ge 2) { $ResourceDetails[1] } else { '' }
                                 'Resource Type'     = if ($ResourceDetails.Count -ge 1) { $ResourceDetails[0] } else { '' }
-                                'Resources Count'   = $ResourcesSUB.Count
+                                'Resources Count'   = $resourcesSubCount
                             }
                             $obj
                         }
@@ -207,4 +235,13 @@ function Start-ARISubscriptionJob {
         #>
 
         $FormattedTable
+    } catch {
+        Write-Error "Error in Start-ARISubscriptionJob: $($_.Exception.Message)"
+        Write-Error "Stack trace: $($_.ScriptStackTrace)"
+        Write-Error "Line: $($_.InvocationInfo.ScriptLineNumber)"
+        Write-Error "Function: $($_.InvocationInfo.FunctionName)"
+        Write-Error "Subscriptions count: $($Subscriptions.Count)"
+        Write-Error "Resources type: $($Resources.GetType().FullName)"
+        throw
+    }
 }

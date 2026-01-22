@@ -171,5 +171,28 @@ function Start-ARIExtraJobs {
     <######################################################### SUBSCRIPTIONS JOB ######################################################################>
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Starting Subscriptions Processing job.')
-    Invoke-ARISubJob -Subscriptions $Subscriptions -Automation $Automation -Resources $Resources -CostData $CostData -ARIModule $ARIModule
+    try {
+        # Ensure Subscriptions and Resources are arrays before passing to job
+        if ($null -eq $Subscriptions) {
+            $Subscriptions = @()
+        } elseif ($Subscriptions -isnot [System.Array]) {
+            $Subscriptions = @($Subscriptions)
+        }
+        
+        if ($null -eq $Resources) {
+            $Resources = @()
+        } elseif ($Resources -isnot [System.Array]) {
+            $Resources = @($Resources)
+        }
+        
+        Write-Debug "Start-ARIExtraJobs: Subscriptions count = $($Subscriptions.Count), Resources count = $($Resources.Count)"
+        
+        Invoke-ARISubJob -Subscriptions $Subscriptions -Automation $Automation -Resources $Resources -CostData $CostData -ARIModule $ARIModule
+    } catch {
+        Write-Error "Error in Start-ARIExtraJobs (Subscriptions job): $($_.Exception.Message)"
+        Write-Error "Stack trace: $($_.ScriptStackTrace)"
+        Write-Error "Line: $($_.InvocationInfo.ScriptLineNumber)"
+        Write-Error "Function: $($_.InvocationInfo.FunctionName)"
+        throw
+    }
 }
