@@ -374,11 +374,12 @@ Function Invoke-CachedARI-Patched {
         
         # Check if cache files exist
         $cacheFiles = @(Get-ChildItem -Path $ReportCache -Filter "*.json" -ErrorAction SilentlyContinue)
-        if ($cacheFiles.Count -eq 0) {
+        $cacheFileCount = if ($null -ne $cacheFiles) { $cacheFiles.Count } else { 0 }
+        if ($cacheFileCount -eq 0) {
             Write-Host "[UseExistingCache] Warning: No cache files found in $ReportCache" -ForegroundColor Yellow
             Write-Host "[UseExistingCache] Excel generation may fail or produce empty report" -ForegroundColor Yellow
         } else {
-            Write-Host "[UseExistingCache] Found $($cacheFiles.Count) cache file(s) - proceeding to Excel generation" -ForegroundColor Green
+            Write-Host "[UseExistingCache] Found $cacheFileCount cache file(s) - proceeding to Excel generation" -ForegroundColor Green
         }
         
         # Initialize empty variables for reporting phase (some may be needed)
@@ -512,8 +513,9 @@ Function Invoke-CachedARI-Patched {
                 Write-Debug "[UseExistingCache] Error reading cache file $($cacheFile.Name): $_"
             }
         }
-        $Resources = $allResources
-        Write-Host "[UseExistingCache] Extracted $($Resources.Count) resource(s) from cache files" -ForegroundColor Green
+        $Resources = if ($null -ne $allResources) { $allResources } else { @() }
+        $resourceCount = if ($null -ne $Resources -and $Resources -is [System.Array]) { $Resources.Count } elseif ($null -ne $Resources) { 1 } else { 0 }
+        Write-Host "[UseExistingCache] Extracted $resourceCount resource(s) from cache files" -ForegroundColor Green
         
         # Collect Policy and Advisor data if not skipped (requires authentication)
         # Safely check Subscriptions.Count
