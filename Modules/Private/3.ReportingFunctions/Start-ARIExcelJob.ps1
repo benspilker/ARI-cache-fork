@@ -64,9 +64,32 @@ function Start-ARIExcelJob {
                     $ModuleFileContent.Dispose()
                     $ModName = $Module.Name.replace(".ps1","")
 
-                    $SmaResources = $CacheData.$ModName
+                    # Safely access cache data - check if CacheData exists and has the ModName property
+                    $SmaResources = $null
+                    if ($null -ne $CacheData) {
+                        if ($CacheData.PSObject.Properties.Name -contains $ModName) {
+                            $SmaResources = $CacheData.$ModName
+                        }
+                    }
 
-                    $ModuleResourceCount = $SmaResources.count
+                    # Safely get count - handle null, array, or single object
+                    $ModuleResourceCount = 0
+                    if ($null -ne $SmaResources) {
+                        if ($SmaResources -is [System.Array]) {
+                            $ModuleResourceCount = $SmaResources.Count
+                        } elseif ($SmaResources -is [System.Collections.Hashtable]) {
+                            $ModuleResourceCount = $SmaResources.Count
+                        } elseif ($SmaResources -is [PSCustomObject]) {
+                            $ModuleResourceCount = 1
+                        } else {
+                            # Try to get count property
+                            try {
+                                $ModuleResourceCount = $SmaResources.count
+                            } catch {
+                                $ModuleResourceCount = 0
+                            }
+                        }
+                    }
 
                     if ($ModuleResourceCount -gt 0)
                     {
