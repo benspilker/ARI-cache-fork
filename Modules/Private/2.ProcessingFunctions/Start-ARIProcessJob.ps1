@@ -22,31 +22,38 @@ function Start-ARIProcessJob {
 
     Write-Progress -activity 'Azure Inventory' -Status "22% Complete." -PercentComplete 22 -CurrentOperation "Creating Jobs to Process Data.."
 
-    switch ($Resources.count)
-    {
-        {$_ -le 12500}
-            {
-                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Regular Size Environment. Jobs will be run in parallel.')
-                $EnvSizeLooper = 20
-            }
-        {$_ -gt 12500 -and $_ -le 50000}
-            {
-                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Medium Size Environment. Jobs will be run in batches of 8.')
-                $EnvSizeLooper = 8
-            }
-        {$_ -gt 50000}
-            {
-                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Large Environment Detected.')
-                $EnvSizeLooper = 5
-                Write-Host ('Jobs will be run in small batches to avoid CPU and Memory Overload.') -ForegroundColor Red
-            }
-    }
-
-    if ($Heavy.IsPresent -or $InTag.IsPresent)
-        {
-            Write-Host ('Heavy Mode or InTag Mode Detected. Jobs will be run in small batches to avoid CPU and Memory Overload.') -ForegroundColor Red
-            $EnvSizeLooper = 5
-        }
+    # PATCHED: Limit concurrent jobs to 3 for Windmill memory constraints
+    # Original logic would use 20/8/5 jobs based on resource count
+    # This patch forces 3 concurrent jobs regardless of environment size
+    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[PATCHED] Limiting concurrent jobs to 3 for Windmill memory constraints')
+    $EnvSizeLooper = 3
+    
+    # Original logic (commented out for reference):
+    # switch ($Resources.count)
+    # {
+    #     {$_ -le 12500}
+    #         {
+    #             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Regular Size Environment. Jobs will be run in parallel.')
+    #             $EnvSizeLooper = 20
+    #         }
+    #     {$_ -gt 12500 -and $_ -le 50000}
+    #         {
+    #             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Medium Size Environment. Jobs will be run in batches of 8.')
+    #             $EnvSizeLooper = 8
+    #         }
+    #     {$_ -gt 50000}
+    #         {
+    #             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Large Environment Detected.')
+    #             $EnvSizeLooper = 5
+    #             Write-Host ('Jobs will be run in small batches to avoid CPU and Memory Overload.') -ForegroundColor Red
+    #         }
+    # }
+    #
+    # if ($Heavy.IsPresent -or $InTag.IsPresent)
+    #     {
+    #         Write-Host ('Heavy Mode or InTag Mode Detected. Jobs will be run in small batches to avoid CPU and Memory Overload.') -ForegroundColor Red
+    #         $EnvSizeLooper = 5
+    #     }
 
     $ParentPath = (get-item $PSScriptRoot).parent.parent
     $InventoryModulesPath = Join-Path $ParentPath 'Public' 'InventoryModules'

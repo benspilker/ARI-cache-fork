@@ -15,6 +15,7 @@ This PowerShell Module is part of Azure Resource Inventory (ARI)
 Version: 3.6.0
 First Release Date: 15th Oct, 2024
 Authors: Claudio Merola
+
 #>
 
 function Build-ARIInitialBlock {
