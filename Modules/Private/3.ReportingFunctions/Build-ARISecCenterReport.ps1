@@ -19,6 +19,20 @@ Authors: Claudio Merola
 
 function Build-ARISecCenterReport {
     param($File, $Sec, $TableStyle)
+    
+    # Ensure Sec is an array for safe handling
+    if ($null -eq $Sec) {
+        $Sec = @()
+    } elseif ($Sec -isnot [System.Array]) {
+        $Sec = @($Sec)
+    }
+    
+    # Only create sheet if we have data
+    if ($Sec.Count -eq 0) {
+        Write-Debug "  No security center data to report - skipping Security Center sheet"
+        return
+    }
+    
     $condtxtsec = $(New-ConditionalText High -Range G:G
     New-ConditionalText High -Range L:L)
 

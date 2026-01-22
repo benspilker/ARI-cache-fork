@@ -47,8 +47,15 @@ function Start-ARIExtraReports {
                     Start-Sleep -Seconds 2
                 }
 
-                $Sec = Receive-Job -Name 'Security'
-                Remove-Job -Name 'Security' | Out-Null
+                $Sec = Receive-Job -Name 'Security' -ErrorAction SilentlyContinue
+                Remove-Job -Name 'Security' -ErrorAction SilentlyContinue | Out-Null
+                
+                # Ensure Sec is an array for safe handling
+                if ($null -eq $Sec) {
+                    $Sec = @()
+                } elseif ($Sec -isnot [System.Array]) {
+                    $Sec = @($Sec)
+                }
 
                 Build-ARISecCenterReport -File $File -Sec $Sec -TableStyle $TableStyle
 
@@ -70,8 +77,15 @@ function Start-ARIExtraReports {
                     Start-Sleep -Seconds 2
                 }
 
-                $Pol = Receive-Job -Name 'Policy'
-                Remove-Job -Name 'Policy' | Out-Null
+                $Pol = Receive-Job -Name 'Policy' -ErrorAction SilentlyContinue
+                Remove-Job -Name 'Policy' -ErrorAction SilentlyContinue | Out-Null
+                
+                # Ensure Pol is an array for safe handling
+                if ($null -eq $Pol) {
+                    $Pol = @()
+                } elseif ($Pol -isnot [System.Array]) {
+                    $Pol = @($Pol)
+                }
 
                 Build-ARIPolicyReport -File $File -Pol $Pol -TableStyle $TableStyle
 
@@ -94,8 +108,15 @@ function Start-ARIExtraReports {
                     Start-Sleep -Seconds 2
                 }
 
-                $Adv = Receive-Job -Name 'Advisory'
-                Remove-Job -Name 'Advisory' | Out-Null
+                $Adv = Receive-Job -Name 'Advisory' -ErrorAction SilentlyContinue
+                Remove-Job -Name 'Advisory' -ErrorAction SilentlyContinue | Out-Null
+                
+                # Ensure Adv is an array for safe handling
+                if ($null -eq $Adv) {
+                    $Adv = @()
+                } elseif ($Adv -isnot [System.Array]) {
+                    $Adv = @($Adv)
+                }
 
                 Build-ARIAdvisoryReport -File $File -Adv $Adv -TableStyle $TableStyle
 

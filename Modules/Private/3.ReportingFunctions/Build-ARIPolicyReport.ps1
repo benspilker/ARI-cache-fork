@@ -19,7 +19,15 @@ Authors: Claudio Merola
 
 function Build-ARIPolicyReport {
     param($File ,$Pol, $TableStyle)
-    if ($Pol)
+    
+    # Ensure Pol is an array for safe handling
+    if ($null -eq $Pol) {
+        $Pol = @()
+    } elseif ($Pol -isnot [System.Array]) {
+        $Pol = @($Pol)
+    }
+    
+    if ($Pol.Count -gt 0)
         {
             $Style = New-ExcelStyle -HorizontalAlignment Center -AutoSize -NumberFormat 0
 

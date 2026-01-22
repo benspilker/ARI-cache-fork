@@ -19,6 +19,20 @@ Authors: Claudio Merola
 
 function Build-ARIAdvisoryReport {
     param($File, $Adv, $TableStyle)
+    
+    # Ensure Adv is an array for safe handling
+    if ($null -eq $Adv) {
+        $Adv = @()
+    } elseif ($Adv -isnot [System.Array]) {
+        $Adv = @($Adv)
+    }
+    
+    # Only create sheet if we have data
+    if ($Adv.Count -eq 0) {
+        Write-Debug "  No advisory data to report - skipping Advisor sheet"
+        return
+    }
+    
     $condtxtadv = @()
     $condtxtadv += New-ConditionalText High -Range H:H
     $condtxtadv += New-ConditionalText Security -Range G:G -BackgroundColor Wheat
