@@ -87,6 +87,23 @@ function Start-ARIExtraReports {
                     $Pol = @($Pol)
                 }
 
+                # Aggressive memory cleanup before Policy sheet generation to prevent OOM
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Running aggressive memory cleanup before Policy sheet generation.')
+                try {
+                    # Remove any remaining jobs
+                    Get-Job | Remove-Job -Force -ErrorAction SilentlyContinue
+                    # Multiple aggressive GC collections
+                    for ($i = 1; $i -le 5; $i++) {
+                        [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $false)
+                        [System.GC]::WaitForPendingFinalizers()
+                        [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
+                    }
+                    # Also call ARI's built-in memory cleanup
+                    Clear-ARIMemory
+                } catch {
+                    Write-Debug "  Warning: Memory cleanup had issues: $_"
+                }
+
                 Build-ARIPolicyReport -File $File -Pol $Pol -TableStyle $TableStyle
 
                 Write-Progress -Id 1 -activity 'Processing Policies'  -Status "100% Complete." -Completed
