@@ -20,15 +20,20 @@ Authors: Claudio Merola
 function Start-ARIExcelJob {
     Param($ReportCache, $File, $TableStyle)
 
-    $ParentPath = (get-item $PSScriptRoot).parent.parent
-    $InventoryModulesPath = Join-Path $ParentPath 'Public' 'InventoryModules'
+    Write-Host "[DEBUG] Start-ARIExcelJob: Starting with ReportCache=$ReportCache, File=$File" -ForegroundColor Magenta
     
-    # Safely get module folders - ensure it's always an array
-    $ModuleFolders = @(Get-ChildItem -Path $InventoryModulesPath -Directory -ErrorAction SilentlyContinue)
-    if ($null -eq $ModuleFolders -or $ModuleFolders.Count -eq 0) {
-        Write-Warning "No module folders found in $InventoryModulesPath"
-        $ModuleFolders = @()
-    }
+    try {
+        $ParentPath = (get-item $PSScriptRoot).parent.parent
+        $InventoryModulesPath = Join-Path $ParentPath 'Public' 'InventoryModules'
+        Write-Host "[DEBUG] Start-ARIExcelJob: InventoryModulesPath=$InventoryModulesPath" -ForegroundColor Magenta
+        
+        # Safely get module folders - ensure it's always an array
+        $ModuleFolders = @(Get-ChildItem -Path $InventoryModulesPath -Directory -ErrorAction SilentlyContinue)
+        if ($null -eq $ModuleFolders -or $ModuleFolders.Count -eq 0) {
+            Write-Warning "No module folders found in $InventoryModulesPath"
+            $ModuleFolders = @()
+        }
+        Write-Host "[DEBUG] Start-ARIExcelJob: Found $($ModuleFolders.Count) module folder(s)" -ForegroundColor Magenta
 
     Write-Progress -activity 'Azure Inventory' -Status "68% Complete." -PercentComplete 68 -CurrentOperation "Starting the Report Loop.."
 
@@ -128,4 +133,17 @@ function Start-ARIExcelJob {
                 Clear-ARIMemory
         }
         Write-Progress -Id 1 -activity "Building Report" -Status "100% Complete." -Completed
+        Write-Host "[DEBUG] Start-ARIExcelJob: Completed successfully" -ForegroundColor Magenta
+    } catch {
+        $errorMsg = "Error in Start-ARIExcelJob: $($_.Exception.Message)"
+        $errorLine = $_.InvocationInfo.ScriptLineNumber
+        $errorFunc = $_.InvocationInfo.FunctionName
+        $errorStack = $_.ScriptStackTrace
+        Write-Host "[ERROR] $errorMsg" -ForegroundColor Red
+        Write-Host "[ERROR] Line: $errorLine, Function: $errorFunc" -ForegroundColor Red
+        Write-Host "[ERROR] Stack: $errorStack" -ForegroundColor Red
+        Write-Error $errorMsg
+        Write-Error "Stack trace: $errorStack"
+        throw
     }
+}

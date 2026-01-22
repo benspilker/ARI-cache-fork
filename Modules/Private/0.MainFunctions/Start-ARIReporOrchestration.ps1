@@ -33,34 +33,60 @@ Function Start-ARIReporOrchestration {
     <############################################################## REPORT CREATION ###################################################################>
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Starting Resource Reporting Cache.')
+    Write-Host "[DEBUG] Start-ARIReporOrchestration: About to call Start-ARIExcelJob" -ForegroundColor Magenta
     try {
         Start-ARIExcelJob -ReportCache $ReportCache -TableStyle $TableStyle -File $File
+        Write-Host "[DEBUG] Start-ARIReporOrchestration: Start-ARIExcelJob completed successfully" -ForegroundColor Magenta
     } catch {
-        Write-Error "Error in Start-ARIExcelJob: $($_.Exception.Message)"
-        Write-Error "Stack trace: $($_.ScriptStackTrace)"
+        $errorMsg = "Error in Start-ARIExcelJob: $($_.Exception.Message)"
+        $errorLine = $_.InvocationInfo.ScriptLineNumber
+        $errorFunc = $_.InvocationInfo.FunctionName
+        $errorStack = $_.ScriptStackTrace
+        Write-Host "[ERROR] $errorMsg" -ForegroundColor Red
+        Write-Host "[ERROR] Line: $errorLine, Function: $errorFunc" -ForegroundColor Red
+        Write-Host "[ERROR] Stack: $errorStack" -ForegroundColor Red
+        Write-Error $errorMsg
+        Write-Error "Stack trace: $errorStack"
         throw
     }
 
     <############################################################## REPORT EXTRA DETAILS ###################################################################>
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Starting Reporting Extra Details.')
+    Write-Host "[DEBUG] Start-ARIReporOrchestration: About to call Start-ARIExcelExtraData" -ForegroundColor Magenta
     try {
         Start-ARIExcelExtraData -File $File
+        Write-Host "[DEBUG] Start-ARIReporOrchestration: Start-ARIExcelExtraData completed successfully" -ForegroundColor Magenta
     } catch {
-        Write-Error "Error in Start-ARIExcelExtraData: $($_.Exception.Message)"
-        Write-Error "Stack trace: $($_.ScriptStackTrace)"
+        $errorMsg = "Error in Start-ARIExcelExtraData: $($_.Exception.Message)"
+        $errorLine = $_.InvocationInfo.ScriptLineNumber
+        $errorFunc = $_.InvocationInfo.FunctionName
+        $errorStack = $_.ScriptStackTrace
+        Write-Host "[ERROR] $errorMsg" -ForegroundColor Red
+        Write-Host "[ERROR] Line: $errorLine, Function: $errorFunc" -ForegroundColor Red
+        Write-Host "[ERROR] Stack: $errorStack" -ForegroundColor Red
+        Write-Error $errorMsg
+        Write-Error "Stack trace: $errorStack"
         throw
     }
 
     <############################################################## EXTRA REPORTS ###################################################################>
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Starting Default Data Reporting.')
-
+    Write-Host "[DEBUG] Start-ARIReporOrchestration: About to call Start-ARIExtraReports" -ForegroundColor Magenta
     try {
         Start-ARIExtraReports -File $File -Quotas $Quotas -SecurityCenter $SecurityCenter -SkipPolicy $SkipPolicy -SkipAdvisory $SkipAdvisory -IncludeCosts $IncludeCosts -TableStyle $TableStyle
+        Write-Host "[DEBUG] Start-ARIReporOrchestration: Start-ARIExtraReports completed successfully" -ForegroundColor Magenta
     } catch {
-        Write-Error "Error in Start-ARIExtraReports: $($_.Exception.Message)"
-        Write-Error "Stack trace: $($_.ScriptStackTrace)"
+        $errorMsg = "Error in Start-ARIExtraReports: $($_.Exception.Message)"
+        $errorLine = $_.InvocationInfo.ScriptLineNumber
+        $errorFunc = $_.InvocationInfo.FunctionName
+        $errorStack = $_.ScriptStackTrace
+        Write-Host "[ERROR] $errorMsg" -ForegroundColor Red
+        Write-Host "[ERROR] Line: $errorLine, Function: $errorFunc" -ForegroundColor Red
+        Write-Host "[ERROR] Stack: $errorStack" -ForegroundColor Red
+        Write-Error $errorMsg
+        Write-Error "Stack trace: $errorStack"
         throw
     }
 
