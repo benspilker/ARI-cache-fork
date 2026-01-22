@@ -21,18 +21,43 @@ function Start-ARIExcelOrdening {
     Param($File)
 
     $Excel = Open-ExcelPackage -Path $File
-    $Worksheets = $Excel.Workbook.Worksheets
+    # Safely access Worksheets - ensure it's always an array
+    $Worksheets = if ($null -ne $Excel -and $null -ne $Excel.Workbook -and $null -ne $Excel.Workbook.Worksheets) { 
+        $Excel.Workbook.Worksheets 
+    } else { 
+        @() 
+    }
+    # Ensure Worksheets is an array
+    if ($null -eq $Worksheets) {
+        $Worksheets = @()
+    } elseif ($Worksheets -isnot [System.Array]) {
+        $Worksheets = @($Worksheets)
+    }
 
     # Safely filter worksheets - ensure Name property exists
     $Order = $Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -notin 'Overview','Policy', 'Advisor', 'Security Center', 'Subscriptions', 'Quota Usage', 'AdvisorScore', 'Outages', 'Support Tickets', 'Reservation Advisor' } | Select-Object -Property Index, name, @{N = "Dimension"; E = { if ($null -ne $_.dimension) { $_.dimension.Rows - 1 } else { 0 } } } | Sort-Object -Property Dimension -Descending
 
+    # Ensure Order is an array for safe .Count access
+    if ($null -eq $Order) {
+        $Order = @()
+    } elseif ($Order -isnot [System.Array]) {
+        $Order = @($Order)
+    }
+
     # Safely access Order array elements
-    if ($Order -and $Order.Count -gt 0) {
+    if ($Order.Count -gt 0) {
         $firstOrderName = if ($null -ne $Order[0] -and $null -ne $Order[0].Name) { $Order[0].Name } else { $null }
         $lastOrder = $Order | Select-Object -Last 1
         $lastOrderName = if ($null -ne $lastOrder -and $null -ne $lastOrder.Name) { $lastOrder.Name } else { $null }
         
         $Order0 = $Order | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -ne $firstOrderName -and $_.Name -ne $lastOrderName }
+        
+        # Ensure Order0 is an array for safe array access
+        if ($null -eq $Order0) {
+            $Order0 = @()
+        } elseif ($Order0 -isnot [System.Array]) {
+            $Order0 = @($Order0)
+        }
 
         #$Worksheets.MoveAfter(($Order | select-object -Last 1).Name, 'Subscriptions')
 
@@ -40,7 +65,7 @@ function Start-ARIExcelOrdening {
 
         Foreach ($Ord in $Order0) {
             if ($null -ne $Ord -and $null -ne $Ord.Index -and $null -ne $Ord.Name) {
-                if ($Loop -ne 0 -and $null -ne $Order0[$Loop - 1] -and $null -ne $Order0[$Loop - 1].Name) {
+                if ($Loop -ne 0 -and $Order0.Count -gt ($Loop - 1) -and $null -ne $Order0[$Loop - 1] -and $null -ne $Order0[$Loop - 1].Name) {
                     try {
                         $Worksheets.MoveAfter($Ord.Name, $Order0[$Loop - 1].Name)
                     } catch {

@@ -21,7 +21,19 @@ function Start-ARIExcelExtraData {
 
     $excel = Open-ExcelPackage -Path $File
 
-    foreach ($SheetName in $excel.Workbook.Worksheets.Name) {
+    # Safely access Worksheets.Name - ensure it's always an array
+    $worksheetNames = @()
+    if ($null -ne $excel -and $null -ne $excel.Workbook -and $null -ne $excel.Workbook.Worksheets) {
+        $worksheetNames = $excel.Workbook.Worksheets.Name
+        # Ensure worksheetNames is an array
+        if ($null -eq $worksheetNames) {
+            $worksheetNames = @()
+        } elseif ($worksheetNames -isnot [System.Array]) {
+            $worksheetNames = @($worksheetNames)
+        }
+    }
+
+    foreach ($SheetName in $worksheetNames) {
 
         if($SheetName -eq 'Event Hubs')
             {
