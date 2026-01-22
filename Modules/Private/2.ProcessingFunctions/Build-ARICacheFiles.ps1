@@ -22,7 +22,13 @@ function Build-ARICacheFiles {
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Checking Cache Folder.')
 
-    $Lops = $JobNames.count
+    # Ensure JobNames is always an array for safe .Count access
+    if ($JobNames -isnot [System.Array]) {
+        $JobNames = @($JobNames)
+    }
+    
+    # Safely get count
+    $Lops = if ($null -ne $JobNames -and $JobNames -is [System.Array]) { $JobNames.Count } elseif ($null -ne $JobNames) { 1 } else { 0 }
     $Counter = 0
 
     Foreach ($Job in $JobNames)

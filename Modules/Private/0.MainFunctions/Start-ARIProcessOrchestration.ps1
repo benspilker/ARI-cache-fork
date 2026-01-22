@@ -56,6 +56,10 @@ function Start-ARIProcessOrchestration {
         else
             {
                 $JobNames = (Get-Job | Where-Object {$_.name -like 'ResourceJob_*'}).Name
+                # Ensure JobNames is always an array (PowerShell Core returns single string for one job)
+                if ($JobNames -isnot [System.Array]) {
+                    $JobNames = @($JobNames)
+                }
                 Wait-ARIJob -JobNames $JobNames -JobType 'Resource' -LoopTime 5
             }
 
