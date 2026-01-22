@@ -22,28 +22,62 @@ function Start-ARISubscriptionJob {
 
     if ([string]::IsNullOrEmpty($CostData))
         {
-            $ResTable = $Resources | Where-Object { $_.type -notin ('microsoft.advisor/recommendations',
-                                                            'ARI/VM/Quotas',
-                                                            'ARI/VM/SKU',
-                                                            'Microsoft.Advisor/advisorScore',
-                                                            'Microsoft.ResourceHealth/events',
-                                                            'microsoft.support/supporttickets' )}
-            $resTable2 = $ResTable | Select-Object id, Type, location, resourcegroup, subscriptionid
-            $ResTable3 = $ResTable2 | Group-Object -Property type, location, resourcegroup, subscriptionid
+            # Ensure Resources is an array
+            if ($null -eq $Resources) {
+                $Resources = @()
+            }
+            if ($Resources -isnot [System.Array]) {
+                $Resources = @($Resources)
+            }
+            
+            # Filter resources - handle both lowercase 'type' and uppercase 'Type'
+            $ResTable = $Resources | Where-Object { 
+                $resourceType = if ($null -ne $_.type) { $_.type } elseif ($null -ne $_.Type) { $_.Type } else { '' }
+                $resourceType -notin ('microsoft.advisor/recommendations',
+                                    'ARI/VM/Quotas',
+                                    'ARI/VM/SKU',
+                                    'Microsoft.Advisor/advisorScore',
+                                    'Microsoft.ResourceHealth/events',
+                                    'microsoft.support/supporttickets' )
+            }
+            
+            # Select properties - handle case variations
+            $resTable2 = $ResTable | Select-Object @{
+                Name='id'; Expression={if ($null -ne $_.id) { $_.id } elseif ($null -ne $_.ID) { $_.ID } else { $_.Id }}
+            }, @{
+                Name='Type'; Expression={if ($null -ne $_.type) { $_.type } elseif ($null -ne $_.Type) { $_.Type } else { '' }}
+            }, @{
+                Name='location'; Expression={if ($null -ne $_.location) { $_.location } elseif ($null -ne $_.Location) { $_.Location } else { '' }}
+            }, @{
+                Name='resourcegroup'; Expression={if ($null -ne $_.resourcegroup) { $_.resourcegroup } elseif ($null -ne $_.resourceGroup) { $_.resourceGroup } elseif ($null -ne $_.ResourceGroup) { $_.ResourceGroup } elseif ($null -ne $_.'Resource Group') { $_.'Resource Group' } else { '' }}
+            }, @{
+                Name='subscriptionid'; Expression={if ($null -ne $_.subscriptionid) { $_.subscriptionid } elseif ($null -ne $_.subscriptionId) { $_.subscriptionId } elseif ($null -ne $_.SubscriptionId) { $_.SubscriptionId } else { '' }}
+            }
+            
+            $ResTable3 = $resTable2 | Group-Object -Property Type, location, resourcegroup, subscriptionid
 
             $FormattedTable = foreach ($ResourcesSUB in $ResTable3) 
                 {
                     $ResourceDetails = $ResourcesSUB.name -split ", "
-                    $SubName = $Subscriptions | Where-Object { $_.Id -eq $ResourceDetails[3] }
-                    $obj = [PSCustomObject]@{
-                        'Subscription'      = $SubName.Name
-                        'SubscriptionId'    = $ResourceDetails[3]
-                        'Resource Group'    = $ResourceDetails[2]
-                        'Location'          = $ResourceDetails[1]
-                        'Resource Type'     = $ResourceDetails[0]
-                        'Resources Count'   = $ResourcesSUB.Count
+                    if ($ResourceDetails.Count -ge 4) {
+                        $subId = $ResourceDetails[3]
+                        $SubName = $Subscriptions | Where-Object { 
+                            $subObjId = if ($null -ne $_.Id) { $_.Id } elseif ($null -ne $_.id) { $_.id } elseif ($null -ne $_.ID) { $_.ID } else { '' }
+                            $subObjId -eq $subId
+                        } | Select-Object -First 1
+                        
+                        $subscriptionName = if ($null -ne $SubName -and $null -ne $SubName.Name) { $SubName.Name } elseif ($null -ne $SubName -and $null -ne $SubName.name) { $SubName.name } else { $subId }
+                        
+                        $obj = [PSCustomObject]@{
+                            'Subscription'      = $subscriptionName
+                            'SubscriptionId'    = $subId
+                            'Resource Group'    = if ($ResourceDetails.Count -ge 3) { $ResourceDetails[2] } else { '' }
+                            'Location'          = if ($ResourceDetails.Count -ge 2) { $ResourceDetails[1] } else { '' }
+                            'Resource Type'     = if ($ResourceDetails.Count -ge 1) { $ResourceDetails[0] } else { '' }
+                            'Resources Count'   = $ResourcesSUB.Count
+                        }
+                        $obj
                     }
-                    $obj
                 }
         }
     else

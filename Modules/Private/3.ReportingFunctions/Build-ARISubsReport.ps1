@@ -19,7 +19,38 @@ Authors: Claudio Merola
 
 function Build-ARISubsReport {
     param($File, $Sub, $IncludeCosts, $TableStyle)
-    $TableName = ('SubsTable_'+($Sub.Subscription | Select-Object -Unique).count)
+    
+    # Ensure $Sub is an array
+    if ($null -eq $Sub) {
+        $Sub = @()
+    } elseif ($Sub -isnot [System.Array]) {
+        $Sub = @($Sub)
+    }
+    
+    # Safely get subscription count - handle null/empty cases
+    $subscriptionCount = 0
+    if ($Sub.Count -gt 0) {
+        try {
+            $subscriptionValues = $Sub | Select-Object -ExpandProperty 'Subscription' -ErrorAction SilentlyContinue | Where-Object { $null -ne $_ }
+            if ($subscriptionValues) {
+                $subscriptionCount = ($subscriptionValues | Select-Object -Unique).Count
+            } else {
+                # If no Subscription property, use array count
+                $subscriptionCount = $Sub.Count
+            }
+        } catch {
+            # If property doesn't exist, try to get count from array itself
+            $subscriptionCount = $Sub.Count
+        }
+    }
+    
+    $TableName = ('SubsTable_'+$subscriptionCount)
+
+    # Only create sheet if we have data
+    if ($Sub.Count -eq 0) {
+        Write-Debug "  No subscription data to report - skipping Subscriptions sheet"
+        return
+    }
 
     if ($IncludeCosts.IsPresent)
         {
