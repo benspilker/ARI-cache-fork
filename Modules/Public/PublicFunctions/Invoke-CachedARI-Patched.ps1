@@ -531,7 +531,8 @@ Function Invoke-CachedARI-Patched {
                     Name = $subName
                 }
             }
-            Write-Host "[UseExistingCache] Created $($Subscriptions.Count) subscription object(s)" -ForegroundColor Green
+            $subscriptionsCreatedCount = if ($null -ne $Subscriptions -and $Subscriptions -is [System.Array]) { $Subscriptions.Count } elseif ($null -ne $Subscriptions) { 1 } else { 0 }
+            Write-Host "[UseExistingCache] Created $subscriptionsCreatedCount subscription object(s)" -ForegroundColor Green
         }
         
         # Extract resource data from cache files for Subscriptions sheet
@@ -660,7 +661,7 @@ Function Invoke-CachedARI-Patched {
                         $Advisories = @($Advisories)
                     }
                     # Safely access Count property - handle null/empty cases
-                    $AdvisoryCount = [string]$Advisories.Count
+                    $AdvisoryCount = if ($null -ne $Advisories -and $Advisories -is [System.Array]) { [string]$Advisories.Count } else { "0" }
                     Write-Host "[UseExistingCache] Collected $AdvisoryCount Advisor recommendation(s) via API call" -ForegroundColor Green
                     Remove-Variable -Name GraphData -ErrorAction SilentlyContinue
                     
@@ -680,7 +681,8 @@ Function Invoke-CachedARI-Patched {
                 if ($Advisories -isnot [System.Array]) {
                     $Advisories = @($Advisories)
                 }
-                if ($Advisories.Count -gt 0) {
+                $advisoriesCountCheck = if ($null -ne $Advisories -and $Advisories -is [System.Array]) { $Advisories.Count } else { 0 }
+                if ($advisoriesCountCheck -gt 0) {
                     Write-Host "[UseExistingCache] Using Advisory data from cache file" -ForegroundColor Green
                 }
             }
@@ -724,7 +726,7 @@ Function Invoke-CachedARI-Patched {
                                 $PolicyCount = "0"
                             }
                         } elseif ($PolicyAssign -is [System.Array]) {
-                            $PolicyCount = [string]$PolicyAssign.Count
+                            $PolicyCount = if ($null -ne $PolicyAssign -and $PolicyAssign -is [System.Array]) { [string]$PolicyAssign.Count } else { "0" }
                         } else {
                             $PolicyCount = "1"
                         }
@@ -838,7 +840,17 @@ Function Invoke-CachedARI-Patched {
         
         # Still run Start-ARIExtraJobs to create jobs needed for reporting (Subscriptions, etc.)
         # but skip diagram and other resource-intensive jobs
-        Start-ARIExtraJobs -SkipDiagram $SkipDiagram -SkipAdvisory $SkipAdvisory -SkipPolicy $SkipPolicy -SecurityCenter $Security -Subscriptions $Subscriptions -Resources $resourcesForJob -Advisories $Advisories -DDFile $DDFile -DiagramCache $DiagramCache -FullEnv $FullEnv -ResourceContainers $ResourceContainers -Security $Security -PolicyAssign $PolicyAssign -PolicySetDef $PolicySetDef -PolicyDef $PolicyDef -IncludeCosts $IncludeCosts -CostData $CostData -Automation $Automation
+        try {
+            Write-Debug "[UseExistingCache] Calling Start-ARIExtraJobs with Subscriptions=$($Subscriptions.Count), Resources=$($resourcesForJob.Count)"
+            Start-ARIExtraJobs -SkipDiagram $SkipDiagram -SkipAdvisory $SkipAdvisory -SkipPolicy $SkipPolicy -SecurityCenter $Security -Subscriptions $Subscriptions -Resources $resourcesForJob -Advisories $Advisories -DDFile $DDFile -DiagramCache $DiagramCache -FullEnv $FullEnv -ResourceContainers $ResourceContainers -Security $Security -PolicyAssign $PolicyAssign -PolicySetDef $PolicySetDef -PolicyDef $PolicyDef -IncludeCosts $IncludeCosts -CostData $CostData -Automation $Automation
+            Write-Debug "[UseExistingCache] Start-ARIExtraJobs completed successfully"
+        } catch {
+            Write-Error "Error in Start-ARIExtraJobs: $($_.Exception.Message)"
+            Write-Error "Stack trace: $($_.ScriptStackTrace)"
+            Write-Error "Line: $($_.InvocationInfo.ScriptLineNumber)"
+            Write-Error "Function: $($_.InvocationInfo.FunctionName)"
+            throw
+        }
     } else {
         # Ensure Subscriptions is initialized and is an array (safety check)
         if ($null -eq $Subscriptions) {

@@ -140,7 +140,23 @@ function Start-ARIExtraReports {
             $SubscriptionsJob = Get-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
         }
 
-        $AzSubs = Receive-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
+        # Check if job failed
+        if ($SubscriptionsJob.State -eq 'Failed') {
+            $jobError = Receive-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
+            Write-Error "Subscriptions job failed: $($SubscriptionsJob | Format-List | Out-String)"
+            if ($jobError) {
+                Write-Error "Job error output: $($jobError | Out-String)"
+            }
+            $AzSubs = @()
+        } else {
+            try {
+                $AzSubs = Receive-Job -Name 'Subscriptions' -ErrorAction Stop
+            } catch {
+                Write-Error "Error receiving Subscriptions job results: $($_.Exception.Message)"
+                Write-Error "Stack trace: $($_.ScriptStackTrace)"
+                $AzSubs = @()
+            }
+        }
         Remove-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue | Out-Null
         
         # Ensure AzSubs is an array for safe handling

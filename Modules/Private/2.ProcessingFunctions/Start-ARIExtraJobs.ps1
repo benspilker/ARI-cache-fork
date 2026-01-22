@@ -109,6 +109,12 @@ function Start-ARIExtraJobs {
         if ($null -ne $PolicyDef) {
             if ($PolicyDef -is [System.Array]) {
                 $hasPolicyDef = $PolicyDef.Count -gt 0
+            } elseif ($PolicyDef -is [PSCustomObject] -or $PolicyDef -is [System.Collections.Hashtable]) {
+                try {
+                    $hasPolicyDef = $PolicyDef.Count -gt 0
+                } catch {
+                    $hasPolicyDef = $true
+                }
             } else {
                 $hasPolicyDef = $true
             }
