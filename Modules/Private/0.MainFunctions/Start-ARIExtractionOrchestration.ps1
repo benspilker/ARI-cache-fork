@@ -22,11 +22,17 @@ function Start-ARIExtractionOrchestration {
 
     $GraphData = Start-ARIGraphExtraction -ManagementGroup $ManagementGroup -Subscriptions $Subscriptions -SubscriptionID $SubscriptionID -ResourceGroup $ResourceGroup -SecurityCenter $SecurityCenter -SkipAdvisory $SkipAdvisory -IncludeTags $IncludeTags -TagKey $TagKey -TagValue $TagValue -AzureEnvironment $AzureEnvironment
 
-    $Resources = $GraphData.Resources
-    $ResourceContainers = $GraphData.ResourceContainers
-    $Advisories = $GraphData.Advisories
-    $Security = $GraphData.Security
-    $Retirements = $GraphData.Retirements
+    # Initialize all variables as arrays to prevent "variable not set" errors
+    $Resources = if ($null -ne $GraphData.Resources) { $GraphData.Resources } else { @() }
+    $ResourceContainers = if ($null -ne $GraphData.ResourceContainers) { $GraphData.ResourceContainers } else { @() }
+    $Advisories = if ($null -ne $GraphData.Advisories) { $GraphData.Advisories } else { @() }
+    $Security = if ($null -ne $GraphData.Security) { $GraphData.Security } else { @() }
+    $Retirements = if ($null -ne $GraphData.Retirements) { $GraphData.Retirements } else { @() }
+    
+    # Ensure Resources is always an array (not a single value) for += operations
+    if ($Resources -isnot [System.Array]) {
+        $Resources = @($Resources)
+    }
 
     Remove-Variable -Name GraphData -ErrorAction SilentlyContinue
 

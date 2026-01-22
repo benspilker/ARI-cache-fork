@@ -20,6 +20,13 @@ Authors: Claudio Merola
 Function Start-ARIGraphExtraction {
     Param($ManagementGroup, $Subscriptions, $SubscriptionID, $ResourceGroup, $SecurityCenter, $SkipAdvisory, $IncludeTags, $TagKey, $TagValue, $AzureEnvironment)
 
+    # Initialize all return variables at the start to prevent "variable not set" errors
+    $Resources = @()
+    $ResourceContainers = @()
+    $Advisories = @()
+    $Security = @()
+    $ResourceRetirements = @()
+
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Starting Extractor function')
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Powershell Edition: ' + ([string]$psversiontable.psEdition))
