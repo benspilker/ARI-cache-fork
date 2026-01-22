@@ -1060,18 +1060,18 @@ Function Invoke-CachedARI-Patched {
             }
     }
 
-        # Clear memory to remove as many memory footprint as possible
-        Clear-ARIMemory
+    # Clear memory to remove as many memory footprint as possible
+    Clear-ARIMemory
 
-        # Clear Cache Folder for future runs (skip if using existing cache)
-        if (-not $UseExistingCache.IsPresent) {
-            Clear-ARICacheFolder -ReportCache $ReportCache
-        } else {
-            Write-Host "[UseExistingCache] Preserving cache files for future use" -ForegroundColor Green
-        }
+    # Clear Cache Folder for future runs (skip if using existing cache)
+    if (-not $UseExistingCache.IsPresent) {
+        Clear-ARICacheFolder -ReportCache $ReportCache
+    } else {
+        Write-Host "[UseExistingCache] Preserving cache files for future use" -ForegroundColor Green
+    }
 
-        # Kills any automated Excel process that might be running
-        Remove-ARIExcelProcess
+    # Kills any automated Excel process that might be running
+    Remove-ARIExcelProcess
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Finished Charts Phase.')
 
@@ -1111,14 +1111,14 @@ Function Invoke-CachedARI-Patched {
 
     $Measure = $TotalRunTime.Elapsed.ToString("dd\:hh\:mm\:ss\:fff")
 
-Write-Progress -activity 'Azure Inventory' -Status "100% Complete." -Completed
+    Write-Progress -activity 'Azure Inventory' -Status "100% Complete." -Completed
 
-if (-not $SkipExcel.IsPresent) {
-    Out-ARIReportResults -Measure $Measure -ResourcesCount $ResourcesCount -TotalRes $TotalRes -SkipAdvisory $SkipAdvisory -AdvisoryData $AdvisoryCount -SkipPolicy $SkipPolicy -SkipAPIs $SkipAPIs -PolicyData $PolicyCount -SecurityCenter $SecurityCenter -SecurityCenterData $SecCenterCount -File $File -SkipDiagram $SkipDiagram -DDFile $DDFile
-} else {
-    Write-Host "Cache collection complete. Excel generation skipped." -ForegroundColor Green
-    Write-Host "Total Resources on Azure: $ResourcesCount" -ForegroundColor Cyan
-    Write-Host "Cache files saved to: $ReportCache" -ForegroundColor Cyan
-}
+    if (-not $SkipExcel.IsPresent) {
+        Out-ARIReportResults -Measure $Measure -ResourcesCount $ResourcesCount -TotalRes $TotalRes -SkipAdvisory $SkipAdvisory -AdvisoryData $AdvisoryCount -SkipPolicy $SkipPolicy -SkipAPIs $SkipAPIs -PolicyData $PolicyCount -SecurityCenter $SecurityCenter -SecurityCenterData $SecCenterCount -File $File -SkipDiagram $SkipDiagram -DDFile $DDFile
+    } else {
+        Write-Host "Cache collection complete. Excel generation skipped." -ForegroundColor Green
+        Write-Host "Total Resources on Azure: $ResourcesCount" -ForegroundColor Cyan
+        Write-Host "Cache files saved to: $ReportCache" -ForegroundColor Cyan
+    }
 
 }
