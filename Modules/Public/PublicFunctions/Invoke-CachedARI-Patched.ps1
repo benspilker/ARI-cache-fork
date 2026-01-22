@@ -288,7 +288,10 @@ Function Invoke-CachedARI-Patched {
         
         # IMPORTANT: If Policy or Advisor are NOT skipped, we still need to authenticate to collect this data
         # Policy and Advisor require API calls and cannot be loaded from resource cache files
-        $needAuthForPolicyOrAdvisor = (-not $SkipPolicy.IsPresent) -or (-not $SkipAdvisory.IsPresent)
+        # Handle both switch parameters and boolean values
+        $skipPolicyCheck = if ($SkipPolicy -is [switch]) { $SkipPolicy.IsPresent } else { $SkipPolicy -eq $true }
+        $skipAdvisoryCheck = if ($SkipAdvisory -is [switch]) { $SkipAdvisory.IsPresent } else { $SkipAdvisory -eq $true }
+        $needAuthForPolicyOrAdvisor = (-not $skipPolicyCheck) -or (-not $skipAdvisoryCheck)
         
         if ($needAuthForPolicyOrAdvisor) {
             Write-Host "[UseExistingCache] Policy/Advisor collection requested - authenticating to Azure for API calls" -ForegroundColor Yellow
@@ -406,7 +409,9 @@ Function Invoke-CachedARI-Patched {
         $advisoryRawCacheFile = Join-Path $ReportCache 'AdvisoryRaw.json'
         
         # Load Policy data from cache if available
-        if (-not $SkipPolicy.IsPresent) {
+        # Handle both switch parameter and boolean value
+        $skipPolicyValue = if ($SkipPolicy -is [switch]) { $SkipPolicy.IsPresent } else { $SkipPolicy -eq $true }
+        if (-not $skipPolicyValue) {
             if (Test-Path $policyCacheFile) {
                 Write-Host "[UseExistingCache] Loading Policy data from cache file: $policyCacheFile" -ForegroundColor Cyan
                 try {
@@ -426,24 +431,49 @@ Function Invoke-CachedARI-Patched {
                     $PolicyAssign = $policyRawData.PolicyAssign
                     $PolicyDef = $policyRawData.PolicyDef
                     $PolicySetDef = $policyRawData.PolicySetDef
-                    if ($null -ne $PolicyAssign -and $null -ne $PolicyAssign.policyAssignments) {
-                        $PolicyCount = if ($PolicyAssign.policyAssignments -is [System.Array]) { 
-                            [string]$PolicyAssign.policyAssignments.Count 
-                        } else { 
-                            "1" 
+                    
+                    # Handle PolicyAssign structure - it may be an object with policyAssignments property, or a direct array
+                    if ($null -ne $PolicyAssign) {
+                        # Ensure PolicyAssign has the expected structure
+                        if ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
+                            # Already has structure, check for policyAssignments property
+                            if (-not $PolicyAssign.policyAssignments) {
+                                # Convert to hashtable with policyAssignments property
+                                $PolicyAssign = @{ policyAssignments = @() }
+                            }
+                        } elseif ($PolicyAssign -is [System.Array]) {
+                            # Direct array - wrap in hashtable with policyAssignments property
+                            $PolicyAssign = @{ policyAssignments = $PolicyAssign }
+                        } else {
+                            # Single value - wrap in hashtable
+                            $PolicyAssign = @{ policyAssignments = @($PolicyAssign) }
                         }
+                    } else {
+                        $PolicyAssign = @{ policyAssignments = @() }
+                    }
+                    
+                    # Safely get count
+                    if ($PolicyAssign.policyAssignments -is [System.Array]) {
+                        $PolicyCount = [string]$PolicyAssign.policyAssignments.Count
+                    } elseif ($null -ne $PolicyAssign.policyAssignments) {
+                        $PolicyCount = "1"
                     } else {
                         $PolicyCount = "0"
                     }
                     Write-Host "[UseExistingCache] Loaded raw Policy data ($PolicyCount policy assignment(s))" -ForegroundColor Green
                 } catch {
                     Write-Host "[UseExistingCache] Warning: Failed to load raw Policy cache file: $_" -ForegroundColor Yellow
+                    $PolicyAssign = @{ policyAssignments = @() }
+                    $PolicyDef = @()
+                    $PolicySetDef = @()
                 }
             }
         }
         
         # Load Advisory data from cache if available
-        if (-not $SkipAdvisory.IsPresent) {
+        # Handle both switch parameter and boolean value
+        $skipAdvisoryValue = if ($SkipAdvisory -is [switch]) { $SkipAdvisory.IsPresent } else { $SkipAdvisory -eq $true }
+        if (-not $skipAdvisoryValue) {
             if (Test-Path $advisoryCacheFile) {
                 Write-Host "[UseExistingCache] Loading Advisory data from cache file: $advisoryCacheFile" -ForegroundColor Cyan
                 try {
@@ -614,7 +644,7 @@ Function Invoke-CachedARI-Patched {
             Write-Host "[UseExistingCache] Collecting Policy and Advisor data via API calls..." -ForegroundColor Yellow
             
             # Collect Advisor data if not skipped AND not already loaded from cache
-            if (-not $SkipAdvisory.IsPresent -and ($null -eq $Advisories -or $Advisories.Count -eq 0)) {
+            if (-not $skipAdvisoryValue -and ($null -eq $Advisories -or $Advisories.Count -eq 0)) {
                 Write-Host "[UseExistingCache] Collecting Advisor data via API (cache file not found)..." -ForegroundColor Cyan
                 try {
                     $GraphData = Start-ARIGraphExtraction -ManagementGroup $null -Subscriptions $Subscriptions -SubscriptionID $SubscriptionID -ResourceGroup $null -SecurityCenter $SecurityCenter -SkipAdvisory $false -IncludeTags $IncludeTags -TagKey $TagKey -TagValue $TagValue -AzureEnvironment $AzureEnvironment
@@ -632,12 +662,12 @@ Function Invoke-CachedARI-Patched {
                     $Advisories = @()
                     $AdvisoryCount = 0
                 }
-            } elseif (-not $SkipAdvisory.IsPresent -and $null -ne $Advisories -and $Advisories.Count -gt 0) {
+            } elseif (-not $skipAdvisoryValue -and $null -ne $Advisories -and $Advisories.Count -gt 0) {
                 Write-Host "[UseExistingCache] Using Advisory data from cache file" -ForegroundColor Green
             }
             
             # Collect Policy data if not skipped AND not already loaded from cache
-            if (-not $SkipPolicy.IsPresent -and ($null -eq $PolicyAssign -or ($null -eq $PolicyAssign.policyAssignments -or $PolicyAssign.policyAssignments.Count -eq 0))) {
+            if (-not $skipPolicyValue -and ($null -eq $PolicyAssign -or ($null -eq $PolicyAssign.policyAssignments -or $PolicyAssign.policyAssignments.Count -eq 0))) {
                 Write-Host "[UseExistingCache] Collecting Policy data via API (cache file not found)..." -ForegroundColor Cyan
                 try {
                     $APIResults = Get-ARIAPIResources -Subscriptions $Subscriptions -AzureEnvironment $AzureEnvironment -SkipPolicy $false
@@ -659,7 +689,7 @@ Function Invoke-CachedARI-Patched {
                     $PolicySetDef = @()
                     $PolicyCount = 0
                 }
-            } elseif (-not $SkipPolicy.IsPresent -and $null -ne $PolicyAssign -and $null -ne $PolicyAssign.policyAssignments -and $PolicyAssign.policyAssignments.Count -gt 0) {
+            } elseif (-not $skipPolicyValue -and $null -ne $PolicyAssign -and $null -ne $PolicyAssign.policyAssignments -and $PolicyAssign.policyAssignments.Count -gt 0) {
                 Write-Host "[UseExistingCache] Using Policy data from cache file" -ForegroundColor Green
             }
         }
@@ -771,7 +801,9 @@ Function Invoke-CachedARI-Patched {
         
         # Save Policy and Advisory data to cache files before skipping Excel generation
         # This ensures Policy and Advisory data is available when merging batches
-        if (-not $SkipPolicy.IsPresent) {
+        # Handle both switch parameters and boolean values
+        $skipPolicyCheck = if ($SkipPolicy -is [switch]) { $SkipPolicy.IsPresent } else { $SkipPolicy -eq $true }
+        if (-not $skipPolicyCheck) {
             # Wait for Policy job to complete if it exists
             $policyJob = Get-Job -Name 'Policy' -ErrorAction SilentlyContinue
             if ($null -ne $policyJob) {
@@ -809,7 +841,9 @@ Function Invoke-CachedARI-Patched {
             }
         }
         
-        if (-not $SkipAdvisory.IsPresent) {
+        # Handle both switch parameters and boolean values
+        $skipAdvisoryCheck = if ($SkipAdvisory -is [switch]) { $SkipAdvisory.IsPresent } else { $SkipAdvisory -eq $true }
+        if (-not $skipAdvisoryCheck) {
             # Wait for Advisory job to complete if it exists
             $advisoryJob = Get-Job -Name 'Advisory' -ErrorAction SilentlyContinue
             if ($null -ne $advisoryJob) {
