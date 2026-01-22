@@ -647,7 +647,9 @@ Function Invoke-CachedARI-Patched {
             if (-not $skipAdvisoryValue -and ($null -eq $Advisories -or $Advisories.Count -eq 0)) {
                 Write-Host "[UseExistingCache] Collecting Advisor data via API (cache file not found)..." -ForegroundColor Cyan
                 try {
-                    $GraphData = Start-ARIGraphExtraction -ManagementGroup $null -Subscriptions $Subscriptions -SubscriptionID $SubscriptionID -ResourceGroup $null -SecurityCenter $SecurityCenter -SkipAdvisory $false -IncludeTags $IncludeTags -TagKey $TagKey -TagValue $TagValue -AzureEnvironment $AzureEnvironment
+                    # Create a switch parameter for SkipAdvisory (Start-ARIGraphExtraction expects a switch)
+                    $skipAdvisorySwitch = [switch]$false
+                    $GraphData = Start-ARIGraphExtraction -ManagementGroup $null -Subscriptions $Subscriptions -SubscriptionID $SubscriptionID -ResourceGroup $null -SecurityCenter $SecurityCenter -SkipAdvisory:$skipAdvisorySwitch -IncludeTags $IncludeTags -TagKey $TagKey -TagValue $TagValue -AzureEnvironment $AzureEnvironment
                     $Advisories = $GraphData.Advisories
                     # Safely access Count property - handle null/empty cases
                     if ($null -ne $Advisories) {
@@ -667,16 +669,40 @@ Function Invoke-CachedARI-Patched {
             }
             
             # Collect Policy data if not skipped AND not already loaded from cache
-            if (-not $skipPolicyValue -and ($null -eq $PolicyAssign -or ($null -eq $PolicyAssign.policyAssignments -or $PolicyAssign.policyAssignments.Count -eq 0))) {
+            # Safely check PolicyAssign structure
+            $hasPolicyData = $false
+            if ($null -ne $PolicyAssign) {
+                if ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
+                    if ($PolicyAssign.policyAssignments -is [System.Array] -and $PolicyAssign.policyAssignments.Count -gt 0) {
+                        $hasPolicyData = $true
+                    }
+                } elseif ($PolicyAssign -is [System.Array] -and $PolicyAssign.Count -gt 0) {
+                    $hasPolicyData = $true
+                }
+            }
+            
+            if (-not $skipPolicyValue -and -not $hasPolicyData) {
                 Write-Host "[UseExistingCache] Collecting Policy data via API (cache file not found)..." -ForegroundColor Cyan
                 try {
-                    $APIResults = Get-ARIAPIResources -Subscriptions $Subscriptions -AzureEnvironment $AzureEnvironment -SkipPolicy $false
+                    # Create a switch parameter for SkipPolicy (Get-ARIAPIResources expects a switch)
+                    $skipPolicySwitch = [switch]$false
+                    $APIResults = Get-ARIAPIResources -Subscriptions $Subscriptions -AzureEnvironment $AzureEnvironment -SkipPolicy:$skipPolicySwitch
                     $PolicyAssign = $APIResults.PolicyAssign
                     $PolicyDef = $APIResults.PolicyDef
                     $PolicySetDef = $APIResults.PolicySetDef
                     # Safely access Count property - handle null/empty cases
-                    if ($null -ne $PolicyAssign -and $null -ne $PolicyAssign.policyAssignments) {
-                        $PolicyCount = [string]$PolicyAssign.policyAssignments.Count
+                    if ($null -ne $PolicyAssign) {
+                        if ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
+                            if ($PolicyAssign.policyAssignments -is [System.Array]) {
+                                $PolicyCount = [string]$PolicyAssign.policyAssignments.Count
+                            } else {
+                                $PolicyCount = "0"
+                            }
+                        } elseif ($PolicyAssign -is [System.Array]) {
+                            $PolicyCount = [string]$PolicyAssign.Count
+                        } else {
+                            $PolicyCount = "1"
+                        }
                     } else {
                         $PolicyCount = "0"
                     }
@@ -684,12 +710,12 @@ Function Invoke-CachedARI-Patched {
                     Remove-Variable -Name APIResults -ErrorAction SilentlyContinue
                 } catch {
                     Write-Host "[UseExistingCache] Warning: Failed to collect Policy data: $_" -ForegroundColor Yellow
-                    $PolicyAssign = @()
+                    $PolicyAssign = @{ policyAssignments = @() }
                     $PolicyDef = @()
                     $PolicySetDef = @()
                     $PolicyCount = 0
                 }
-            } elseif (-not $skipPolicyValue -and $null -ne $PolicyAssign -and $null -ne $PolicyAssign.policyAssignments -and $PolicyAssign.policyAssignments.Count -gt 0) {
+            } elseif (-not $skipPolicyValue -and $hasPolicyData) {
                 Write-Host "[UseExistingCache] Using Policy data from cache file" -ForegroundColor Green
             }
         }
