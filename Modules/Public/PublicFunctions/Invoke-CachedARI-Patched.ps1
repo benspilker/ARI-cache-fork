@@ -469,13 +469,20 @@ Function Invoke-CachedARI-Patched {
                         if ($resourceId -and $resourceId -match '/subscriptions/([^/]+)/') {
                             $subId = $matches[1]
                             
-                            # Try to find Type property
+                            # Try to find Type property (cache files may use 'Resource Type' with space, or 'Type', 'type', etc.)
                             $resourceType = 'Unknown'
-                            $typeProps = @('Type', 'type', 'ResourceType', 'resourceType')
+                            $typeProps = @('Resource Type', 'Type', 'type', 'ResourceType', 'resourceType', 'TYPE')
                             foreach ($prop in $typeProps) {
                                 if ($resource.PSObject.Properties.Name -contains $prop) {
                                     $resourceType = $resource.$prop
                                     break
+                                }
+                            }
+                            
+                            # If still unknown, try to extract from resource ID
+                            if ($resourceType -eq 'Unknown' -and $resourceId) {
+                                if ($resourceId -match '/providers/([^/]+/[^/]+)') {
+                                    $resourceType = $matches[1]
                                 }
                             }
                             
@@ -499,13 +506,26 @@ Function Invoke-CachedARI-Patched {
                                 }
                             }
                             
-                            $allResources += [PSCustomObject]@{
+                            # Create resource object with both lowercase and uppercase properties for compatibility
+                            $resourceObj = [PSCustomObject]@{
                                 id = $resourceId
+                                ID = $resourceId
+                                Id = $resourceId
                                 Type = $resourceType
+                                type = $resourceType
                                 location = $location
+                                Location = $location
+                                LOCATION = $location
                                 resourcegroup = $resourceGroup
+                                resourceGroup = $resourceGroup
+                                ResourceGroup = $resourceGroup
+                                RESOURCEGROUP = $resourceGroup
+                                'Resource Group' = $resourceGroup
                                 subscriptionid = $subId
+                                subscriptionId = $subId
+                                SubscriptionId = $subId
                             }
+                            $allResources += $resourceObj
                         }
                     }
                 }
@@ -637,9 +657,18 @@ Function Invoke-CachedARI-Patched {
         Write-Host "[UseExistingCache] Skipping resource processing - using existing cache files directly" -ForegroundColor Green
         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[UseExistingCache] Skipped Start-ARIProcessOrchestration')
         
+        # Ensure Resources is initialized and is an array for the subscription job
+        if ($null -eq $Resources) {
+            $Resources = @()
+        } elseif ($Resources -isnot [System.Array]) {
+            $Resources = @($Resources)
+        }
+        $resourcesForJob = if ($Resources.Count -gt 0) { $Resources } else { @() }
+        Write-Debug "[UseExistingCache] Passing $($resourcesForJob.Count) resource(s) to Start-ARIExtraJobs for subscription job"
+        
         # Still run Start-ARIExtraJobs to create jobs needed for reporting (Subscriptions, etc.)
         # but skip diagram and other resource-intensive jobs
-        Start-ARIExtraJobs -SkipDiagram $SkipDiagram -SkipAdvisory $SkipAdvisory -SkipPolicy $SkipPolicy -SecurityCenter $Security -Subscriptions $Subscriptions -Resources $Resources -Advisories $Advisories -DDFile $DDFile -DiagramCache $DiagramCache -FullEnv $FullEnv -ResourceContainers $ResourceContainers -Security $Security -PolicyAssign $PolicyAssign -PolicySetDef $PolicySetDef -PolicyDef $PolicyDef -IncludeCosts $IncludeCosts -CostData $CostData -Automation $Automation
+        Start-ARIExtraJobs -SkipDiagram $SkipDiagram -SkipAdvisory $SkipAdvisory -SkipPolicy $SkipPolicy -SecurityCenter $Security -Subscriptions $Subscriptions -Resources $resourcesForJob -Advisories $Advisories -DDFile $DDFile -DiagramCache $DiagramCache -FullEnv $FullEnv -ResourceContainers $ResourceContainers -Security $Security -PolicyAssign $PolicyAssign -PolicySetDef $PolicySetDef -PolicyDef $PolicyDef -IncludeCosts $IncludeCosts -CostData $CostData -Automation $Automation
     } else {
         Start-ARIExtraJobs -SkipDiagram $SkipDiagram -SkipAdvisory $SkipAdvisory -SkipPolicy $SkipPolicy -SecurityCenter $Security -Subscriptions $Subscriptions -Resources $Resources -Advisories $Advisories -DDFile $DDFile -DiagramCache $DiagramCache -FullEnv $FullEnv -ResourceContainers $ResourceContainers -Security $Security -PolicyAssign $PolicyAssign -PolicySetDef $PolicySetDef -PolicyDef $PolicyDef -IncludeCosts $IncludeCosts -CostData $CostData -Automation $Automation
 

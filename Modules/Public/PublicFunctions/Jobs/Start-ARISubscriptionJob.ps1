@@ -20,6 +20,10 @@ Authors: Claudio Merola
 function Start-ARISubscriptionJob {
     param($Subscriptions, $Resources, $CostData)
 
+    # Debug: Log what we received
+    $resourcesCount = if ($null -ne $Resources -and $Resources -is [System.Array]) { $Resources.Count } elseif ($null -ne $Resources) { 1 } else { 0 }
+    Write-Debug "Start-ARISubscriptionJob: Received $resourcesCount resource(s), $($Subscriptions.Count) subscription(s)"
+
     if ([string]::IsNullOrEmpty($CostData))
         {
             # Ensure Resources is an array
@@ -29,6 +33,8 @@ function Start-ARISubscriptionJob {
             if ($Resources -isnot [System.Array]) {
                 $Resources = @($Resources)
             }
+            
+            Write-Debug "Start-ARISubscriptionJob: Resources array has $($Resources.Count) item(s)"
             
             # Filter resources - handle both lowercase 'type' and uppercase 'Type'
             $ResTable = $Resources | Where-Object { 
@@ -54,7 +60,12 @@ function Start-ARISubscriptionJob {
                 Name='subscriptionid'; Expression={if ($null -ne $_.subscriptionid) { $_.subscriptionid } elseif ($null -ne $_.subscriptionId) { $_.subscriptionId } elseif ($null -ne $_.SubscriptionId) { $_.SubscriptionId } else { '' }}
             }
             
+            Write-Debug "Start-ARISubscriptionJob: After filtering, ResTable has $($ResTable.Count) item(s)"
+            Write-Debug "Start-ARISubscriptionJob: resTable2 has $($resTable2.Count) item(s)"
+            
             $ResTable3 = $resTable2 | Group-Object -Property Type, location, resourcegroup, subscriptionid
+            
+            Write-Debug "Start-ARISubscriptionJob: After grouping, ResTable3 has $($ResTable3.Count) group(s)"
 
             $FormattedTable = foreach ($ResourcesSUB in $ResTable3) 
                 {
@@ -79,6 +90,8 @@ function Start-ARISubscriptionJob {
                         $obj
                     }
                 }
+            
+            Write-Debug "Start-ARISubscriptionJob: FormattedTable has $($FormattedTable.Count) item(s)"
         }
     else
         {
