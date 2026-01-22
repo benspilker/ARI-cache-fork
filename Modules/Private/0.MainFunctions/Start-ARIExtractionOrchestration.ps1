@@ -29,6 +29,14 @@ function Start-ARIExtractionOrchestration {
     $Security = if ($null -ne $GraphData.Security) { $GraphData.Security } else { @() }
     $Retirements = if ($null -ne $GraphData.Retirements) { $GraphData.Retirements } else { @() }
     
+    # Initialize optional variables that may not be set in all code paths
+    $VMQuotas = $null
+    $VMSkuDetails = $null
+    $Costs = $null
+    $PolicyAssign = $null
+    $PolicyDef = $null
+    $PolicySetDef = $null
+    
     # Ensure Resources is always an array (not a single value) for += operations
     if ($Resources -isnot [System.Array]) {
         $Resources = @($Resources)
@@ -83,7 +91,7 @@ function Start-ARIExtractionOrchestration {
 
             $Resources += $VMQuotas
 
-            Remove-Variable -Name VMQuotas -ErrorAction SilentlyContinue
+            # Don't remove VMQuotas - it's needed in the return object
 
             Write-Host 'Gathering VM Extra Details: ' -NoNewline
             Write-Host 'Size SKU' -ForegroundColor Cyan
