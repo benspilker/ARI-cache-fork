@@ -20,9 +20,17 @@ Authors: Claudio Merola
 function Start-ARISubscriptionJob {
     param($Subscriptions, $Resources, $CostData)
 
+    # Ensure Subscriptions is an array for safe .Count access
+    if ($null -eq $Subscriptions) {
+        $Subscriptions = @()
+    } elseif ($Subscriptions -isnot [System.Array]) {
+        $Subscriptions = @($Subscriptions)
+    }
+
     # Debug: Log what we received
     $resourcesCount = if ($null -ne $Resources -and $Resources -is [System.Array]) { $Resources.Count } elseif ($null -ne $Resources) { 1 } else { 0 }
-    Write-Debug "Start-ARISubscriptionJob: Received $resourcesCount resource(s), $($Subscriptions.Count) subscription(s)"
+    $subscriptionsCount = if ($null -ne $Subscriptions -and $Subscriptions -is [System.Array]) { $Subscriptions.Count } elseif ($null -ne $Subscriptions) { 1 } else { 0 }
+    Write-Debug "Start-ARISubscriptionJob: Received $resourcesCount resource(s), $subscriptionsCount subscription(s)"
 
     if ([string]::IsNullOrEmpty($CostData))
         {

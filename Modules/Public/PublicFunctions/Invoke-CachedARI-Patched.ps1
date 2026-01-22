@@ -803,10 +803,25 @@ Function Invoke-CachedARI-Patched {
         $resourcesForJob = if ($Resources.Count -gt 0) { $Resources } else { @() }
         Write-Debug "[UseExistingCache] Passing $($resourcesForJob.Count) resource(s) to Start-ARIExtraJobs for subscription job"
         
+        # Ensure Subscriptions is initialized and is an array for the subscription job
+        if ($null -eq $Subscriptions) {
+            $Subscriptions = @()
+        } elseif ($Subscriptions -isnot [System.Array]) {
+            $Subscriptions = @($Subscriptions)
+        }
+        Write-Debug "[UseExistingCache] Passing $($Subscriptions.Count) subscription(s) to Start-ARIExtraJobs"
+        
         # Still run Start-ARIExtraJobs to create jobs needed for reporting (Subscriptions, etc.)
         # but skip diagram and other resource-intensive jobs
         Start-ARIExtraJobs -SkipDiagram $SkipDiagram -SkipAdvisory $SkipAdvisory -SkipPolicy $SkipPolicy -SecurityCenter $Security -Subscriptions $Subscriptions -Resources $resourcesForJob -Advisories $Advisories -DDFile $DDFile -DiagramCache $DiagramCache -FullEnv $FullEnv -ResourceContainers $ResourceContainers -Security $Security -PolicyAssign $PolicyAssign -PolicySetDef $PolicySetDef -PolicyDef $PolicyDef -IncludeCosts $IncludeCosts -CostData $CostData -Automation $Automation
     } else {
+        # Ensure Subscriptions is initialized and is an array (safety check)
+        if ($null -eq $Subscriptions) {
+            $Subscriptions = @()
+        } elseif ($Subscriptions -isnot [System.Array]) {
+            $Subscriptions = @($Subscriptions)
+        }
+        
         Start-ARIExtraJobs -SkipDiagram $SkipDiagram -SkipAdvisory $SkipAdvisory -SkipPolicy $SkipPolicy -SecurityCenter $Security -Subscriptions $Subscriptions -Resources $Resources -Advisories $Advisories -DDFile $DDFile -DiagramCache $DiagramCache -FullEnv $FullEnv -ResourceContainers $ResourceContainers -Security $Security -PolicyAssign $PolicyAssign -PolicySetDef $PolicySetDef -PolicyDef $PolicyDef -IncludeCosts $IncludeCosts -CostData $CostData -Automation $Automation
 
         Start-ARIProcessOrchestration -Subscriptions $Subscriptions -Resources $Resources -Retirements $Retirements -DefaultPath $DefaultPath -Heavy $Heavy -File $File -InTag $InTag -Automation $Automation
