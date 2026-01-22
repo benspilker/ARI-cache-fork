@@ -244,17 +244,20 @@ function Build-ARIExcelChart {
         }
         Add-PivotTable @PTParams
     }
-    elseif (($Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Subscriptions' }) -and $Overview -eq 2) {
-        $P1Name = 'Subscriptions'
-        $PTParams = @{
-            PivotTableName          = "P1"
-            Address                 = $excel.Overview.cells["DK6"] # top-left corner of the table
-            SourceWorkSheet         = $excel.Subscriptions
-            PivotRows               = @("Subscription")
-            PivotData               = @{"Resources Count" = "sum" }
-            PivotTableStyle         = $tableStyle
-            IncludePivotChart       = $true
-            ChartType               = "BarClustered"
+    elseif (($Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Subscriptions' }) -and $Overview -eq 2) {
+        # Safely check if Subscriptions worksheet exists before accessing
+        $SubscriptionsWS = $Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Subscriptions' } | Select-Object -First 1
+        if ($null -ne $SubscriptionsWS) {
+            $P1Name = 'Subscriptions'
+            $PTParams = @{
+                PivotTableName          = "P1"
+                Address                 = $excel.Overview.cells["DK6"] # top-left corner of the table
+                SourceWorkSheet         = $SubscriptionsWS
+                PivotRows               = @("Subscription")
+                PivotData               = @{"Resources Count" = "sum" }
+                PivotTableStyle         = $tableStyle
+                IncludePivotChart       = $true
+                ChartType               = "BarClustered"
             ChartRow                = 27 # place the chart below row 22nd
             ChartColumn             = 2
             Activate                = $true
@@ -266,8 +269,11 @@ function Build-ARIExcelChart {
             ChartWidth              = 570
             ChartRowOffSetPixels    = 5
             ChartColumnOffSetPixels = 5
+            }
+            Add-PivotTable @PTParams
+        } else {
+            Write-Debug "  Warning: Subscriptions worksheet not found - skipping P1 PivotTable"
         }
-        Add-PivotTable @PTParams
     }
     elseif (($Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Quota Usage' }) -and $Overview -eq 1) {
         $P1Name = 'Quota Usage'
@@ -603,59 +609,70 @@ function Build-ARIExcelChart {
     $DrawP5 = $WS.Drawings | Where-Object { $_.Name -eq 'TP5' }
     $DrawP5.RichText.Add($P5Name) | Out-Null
 
+    # Safely check if Subscriptions worksheet exists before accessing
+    $SubscriptionsWS = $Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Subscriptions' } | Select-Object -First 1
+    
     if($IncludeCosts.IsPresent)
         {
-            $P6Name = 'Cost per Month'
-            $PTParams = @{
-                PivotTableName          = "P6"
-                Address                 = $excel.Overview.cells["CR5"] # top-left corner of the table
-                SourceWorkSheet         = $excel.Subscriptions
-                PivotRows               = @("Month")
-                PivotData               = @{"Cost" = "sum" }
-                PivotTableStyle         = $tableStyle
-                IncludePivotChart       = $true
-                ChartType               = "ColumnStacked3D"
-                ChartRow                = 1 # place the chart below row 22nd
-                ChartColumn             = 24
-                Activate                = $true
-                PivotNumberFormat       = 'Currency'
-                PivotFilter             = 'Subscription'
-                ChartTitle              = 'Cost per Month'
-                NoLegend                = $true
-                ShowPercent             = $true
-                ChartHeight             = 400
-                ChartWidth              = 315
-                ChartRowOffSetPixels    = 0
-                ChartColumnOffSetPixels = 0
+            if ($null -ne $SubscriptionsWS) {
+                $P6Name = 'Cost per Month'
+                $PTParams = @{
+                    PivotTableName          = "P6"
+                    Address                 = $excel.Overview.cells["CR5"] # top-left corner of the table
+                    SourceWorkSheet         = $SubscriptionsWS
+                    PivotRows               = @("Month")
+                    PivotData               = @{"Cost" = "sum" }
+                    PivotTableStyle         = $tableStyle
+                    IncludePivotChart       = $true
+                    ChartType               = "ColumnStacked3D"
+                    ChartRow                = 1 # place the chart below row 22nd
+                    ChartColumn             = 24
+                    Activate                = $true
+                    PivotNumberFormat       = 'Currency'
+                    PivotFilter             = 'Subscription'
+                    ChartTitle              = 'Cost per Month'
+                    NoLegend                = $true
+                    ShowPercent             = $true
+                    ChartHeight             = 400
+                    ChartWidth              = 315
+                    ChartRowOffSetPixels    = 0
+                    ChartColumnOffSetPixels = 0
+                }
+                Add-PivotTable @PTParams
+            } else {
+                Write-Debug "  Warning: Subscriptions worksheet not found - skipping P6 Cost per Month PivotTable"
             }
-            Add-PivotTable @PTParams
         }
     else
         {
-    $P6Name = 'Resources by Location'
-    $PTParams = @{
-        PivotTableName          = "P6"
-        Address                 = $excel.Overview.cells["CR5"] # top-left corner of the table
-        SourceWorkSheet         = $excel.Subscriptions
-        PivotRows               = @("Location")
-        PivotData               = @{"Resources Count" = "sum" }
-        PivotTableStyle         = $tableStyle
-        IncludePivotChart       = $true
-        ChartType               = "ColumnStacked3D"
-        ChartRow                = 1 # place the chart below row 22nd
-        ChartColumn             = 24
-        Activate                = $true
-        PivotFilter             = 'Resource Type'
-        ChartTitle              = 'Resources by Location'
-        NoLegend                = $true
-        ShowPercent             = $true
-        ChartHeight             = 400
-        ChartWidth              = 315
-        ChartRowOffSetPixels    = 0
-        ChartColumnOffSetPixels = 0
+            if ($null -ne $SubscriptionsWS) {
+                $P6Name = 'Resources by Location'
+                $PTParams = @{
+                    PivotTableName          = "P6"
+                    Address                 = $excel.Overview.cells["CR5"] # top-left corner of the table
+                    SourceWorkSheet         = $SubscriptionsWS
+                    PivotRows               = @("Location")
+                    PivotData               = @{"Resources Count" = "sum" }
+                    PivotTableStyle         = $tableStyle
+                    IncludePivotChart       = $true
+                    ChartType               = "ColumnStacked3D"
+                    ChartRow                = 1 # place the chart below row 22nd
+                    ChartColumn             = 24
+                    Activate                = $true
+                    PivotFilter             = 'Resource Type'
+                    ChartTitle              = 'Resources by Location'
+                    NoLegend                = $true
+                    ShowPercent             = $true
+                    ChartHeight             = 400
+                    ChartWidth              = 315
+                    ChartRowOffSetPixels    = 0
+                    ChartColumnOffSetPixels = 0
+                }
+                Add-PivotTable @PTParams
+            } else {
+                Write-Debug "  Warning: Subscriptions worksheet not found - skipping P6 Resources by Location PivotTable"
+            }
         }
-        Add-PivotTable @PTParams
-    }
 
     $DrawP6 = $WS.Drawings | Where-Object { $_.Name -eq 'TP6' }
     $DrawP6.RichText.Add($P6Name) | Out-Null
