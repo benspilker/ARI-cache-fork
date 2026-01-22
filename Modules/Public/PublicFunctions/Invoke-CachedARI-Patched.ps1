@@ -402,9 +402,9 @@ Function Invoke-CachedARI-Patched {
         $PolicySetDef = @()
         
         # Try to load Policy and Advisory data from cache files first
-        # This allows Policy/Advisory data collected during batch processing to be used
+        # Note: PolicyRaw.json is NOT used - Policy data is collected via API call instead
+        # This avoids merge issues with PolicyRaw.json files that have inconsistent structures
         $policyCacheFile = Join-Path $ReportCache 'Policy.json'
-        $policyRawCacheFile = Join-Path $ReportCache 'PolicyRaw.json'
         $advisoryCacheFile = Join-Path $ReportCache 'Advisory.json'
         $advisoryRawCacheFile = Join-Path $ReportCache 'AdvisoryRaw.json'
         
@@ -424,7 +424,13 @@ Function Invoke-CachedARI-Patched {
                 } catch {
                     Write-Host "[UseExistingCache] Warning: Failed to load Policy cache file: $_" -ForegroundColor Yellow
                 }
-            } elseif (Test-Path $policyRawCacheFile) {
+            } else {
+                Write-Host "[UseExistingCache] Policy cache file not found - will collect via API call" -ForegroundColor Gray
+            }
+            
+            # PolicyRaw.json loading removed - Policy data collected via API call instead
+            # This avoids merge issues with PolicyRaw.json files that have inconsistent structures
+            if ($false) {
                 Write-Host "[UseExistingCache] Loading raw Policy data from cache file: $policyRawCacheFile" -ForegroundColor Cyan
                 try {
                     $policyRawData = Get-Content $policyRawCacheFile -Raw | ConvertFrom-Json
@@ -659,6 +665,13 @@ Function Invoke-CachedARI-Patched {
                     }
                     Write-Host "[UseExistingCache] Collected $AdvisoryCount Advisor recommendation(s)" -ForegroundColor Green
                     Remove-Variable -Name GraphData -ErrorAction SilentlyContinue
+                    
+                    # Aggressive memory cleanup after Advisor API call
+                    Write-Host "[UseExistingCache] Running memory cleanup after Advisor API call..." -ForegroundColor Gray
+                    [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $false)
+                    [System.GC]::WaitForPendingFinalizers()
+                    [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
+                    Start-Sleep -Milliseconds 500
                 } catch {
                     Write-Host "[UseExistingCache] Warning: Failed to collect Advisor data: $_" -ForegroundColor Yellow
                     $Advisories = @()
@@ -708,6 +721,13 @@ Function Invoke-CachedARI-Patched {
                     }
                     Write-Host "[UseExistingCache] Collected $PolicyCount Policy assignment(s)" -ForegroundColor Green
                     Remove-Variable -Name APIResults -ErrorAction SilentlyContinue
+                    
+                    # Aggressive memory cleanup after Policy API call
+                    Write-Host "[UseExistingCache] Running memory cleanup after Policy API call..." -ForegroundColor Gray
+                    [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $false)
+                    [System.GC]::WaitForPendingFinalizers()
+                    [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
+                    Start-Sleep -Milliseconds 500
                 } catch {
                     Write-Host "[UseExistingCache] Warning: Failed to collect Policy data: $_" -ForegroundColor Yellow
                     $PolicyAssign = @{ policyAssignments = @() }
@@ -825,46 +845,15 @@ Function Invoke-CachedARI-Patched {
         Write-Host "[SkipExcel] Skipping Excel generation - only creating cache files" -ForegroundColor Green
         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[SkipExcel] Skipped Excel report generation')
         
-        # Save Policy and Advisory data to cache files before skipping Excel generation
-        # This ensures Policy and Advisory data is available when merging batches
+        # Save Advisory data to cache files before skipping Excel generation
+        # Note: Policy data is NOT cached - it will be collected via API call during Excel generation
+        # This avoids merge issues with PolicyRaw.json files that have inconsistent structures
         # Handle both switch parameters and boolean values
         $skipPolicyCheck = if ($SkipPolicy -is [switch]) { $SkipPolicy.IsPresent } else { $SkipPolicy -eq $true }
         if (-not $skipPolicyCheck) {
-            # Wait for Policy job to complete if it exists
-            $policyJob = Get-Job -Name 'Policy' -ErrorAction SilentlyContinue
-            if ($null -ne $policyJob) {
-                Write-Host "[SkipExcel] Waiting for Policy job to complete..." -ForegroundColor Cyan
-                while ($policyJob.State -eq 'Running') {
-                    Start-Sleep -Seconds 2
-                    $policyJob = Get-Job -Name 'Policy' -ErrorAction SilentlyContinue
-                }
-                if ($policyJob.State -eq 'Completed') {
-                    $policyJobResult = Receive-Job -Name 'Policy'
-                    Remove-Job -Name 'Policy' -ErrorAction SilentlyContinue
-                    
-                    # Save Policy job result to cache file
-                    $policyCacheFile = Join-Path $ReportCache 'Policy.json'
-                    Write-Host "[SkipExcel] Saving Policy data to cache file: $policyCacheFile" -ForegroundColor Green
-                    $policyJobResult | ConvertTo-Json -Depth 40 | Out-File $policyCacheFile -Force
-                    Write-Host "[SkipExcel] Saved Policy data ($($policyJobResult.Count) policy record(s))" -ForegroundColor Green
-                }
-            } else {
-                # If no Policy job exists, save raw Policy data (PolicyAssign, PolicyDef, PolicySetDef)
-                if ($null -ne $PolicyAssign -or $null -ne $PolicyDef -or $null -ne $PolicySetDef) {
-                    $policyRawData = @{
-                        PolicyAssign = $PolicyAssign
-                        PolicyDef = $PolicyDef
-                        PolicySetDef = $PolicySetDef
-                    }
-                    $policyCacheFile = Join-Path $ReportCache 'PolicyRaw.json'
-                    Write-Host "[SkipExcel] Saving raw Policy data to cache file: $policyCacheFile" -ForegroundColor Green
-                    $policyRawData | ConvertTo-Json -Depth 40 | Out-File $policyCacheFile -Force
-                    $policyAssignCount = if ($null -ne $PolicyAssign -and $null -ne $PolicyAssign.policyAssignments) { 
-                        if ($PolicyAssign.policyAssignments -is [System.Array]) { $PolicyAssign.policyAssignments.Count } else { 1 }
-                    } else { 0 }
-                    Write-Host "[SkipExcel] Saved raw Policy data ($policyAssignCount policy assignment(s))" -ForegroundColor Green
-                }
-            }
+            # Policy data will be collected via API call during Excel generation
+            # No need to cache it during batch collection
+            Write-Host "[SkipExcel] Policy data will be collected via API call during Excel generation (not caching)" -ForegroundColor Gray
         }
         
         # Handle both switch parameters and boolean values
