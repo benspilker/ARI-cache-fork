@@ -95,6 +95,19 @@ function Start-ARIExtraJobs {
     if (!$SkipPolicy.IsPresent) {
         if (![string]::IsNullOrEmpty($PolicyAssign) -and ![string]::IsNullOrEmpty($PolicyDef))
             {
+                # PATCHED: Wait for resource processing jobs to complete before starting Policy job
+                # This prevents exceeding Windmill's concurrent job limits
+                $resourceJobs = Get-Job | Where-Object {$_.name -like 'ResourceJob_*' -and $_.State -eq 'Running'}
+                if ($resourceJobs) {
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[PATCHED] Waiting for resource processing jobs to complete before starting Policy job')
+                    $resourceJobNames = $resourceJobs.Name
+                    if ($resourceJobNames -isnot [System.Array]) {
+                        $resourceJobNames = @($resourceJobNames)
+                    }
+                    Wait-ARIJob -JobNames $resourceJobNames -JobType 'Resource' -LoopTime 5
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[PATCHED] Resource jobs completed, starting Policy job')
+                }
+                
                 Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Starting Policy Processing Job.')
                 Invoke-ARIPolicyJob -Subscriptions $Subscriptions -PolicySetDef $PolicySetDef -PolicyAssign $PolicyAssign -PolicyDef $PolicyDef -ARIModule $ARIModule -Automation $Automation
             }
@@ -106,6 +119,19 @@ function Start-ARIExtraJobs {
     if (!$SkipAdvisory.IsPresent) {
         if (![string]::IsNullOrEmpty($Advisories))
             {
+                # PATCHED: Wait for resource processing jobs to complete before starting Advisory job
+                # This prevents exceeding Windmill's concurrent job limits
+                $resourceJobs = Get-Job | Where-Object {$_.name -like 'ResourceJob_*' -and $_.State -eq 'Running'}
+                if ($resourceJobs) {
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[PATCHED] Waiting for resource processing jobs to complete before starting Advisory job')
+                    $resourceJobNames = $resourceJobs.Name
+                    if ($resourceJobNames -isnot [System.Array]) {
+                        $resourceJobNames = @($resourceJobNames)
+                    }
+                    Wait-ARIJob -JobNames $resourceJobNames -JobType 'Resource' -LoopTime 5
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[PATCHED] Resource jobs completed, starting Advisory job')
+                }
+                
                 Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Starting Advisory Processing Job.')
                 Invoke-ARIAdvisoryJob -Advisories $Advisories -ARIModule $ARIModule -Automation $Automation
             }
