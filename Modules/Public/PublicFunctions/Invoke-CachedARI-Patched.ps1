@@ -507,15 +507,14 @@ Function Invoke-CachedARI-Patched {
                             }
                             
                             # Create resource object with both lowercase and uppercase properties for compatibility
+                            # Note: PowerShell hashtables are case-insensitive, so we use different property names
                             $resourceObj = [PSCustomObject]@{
                                 id = $resourceId
-                                ID = $resourceId
                                 Id = $resourceId
                                 Type = $resourceType
                                 type = $resourceType
                                 location = $location
                                 Location = $location
-                                LOCATION = $location
                                 resourcegroup = $resourceGroup
                                 resourceGroup = $resourceGroup
                                 ResourceGroup = $resourceGroup
