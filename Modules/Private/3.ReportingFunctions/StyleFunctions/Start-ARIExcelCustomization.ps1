@@ -48,19 +48,22 @@ function Start-ARIExcelCustomization {
 
     $TotalRes = 0
     $Table = Foreach ($WorkS in $Worksheets) {
-        if(![string]::IsNullOrEmpty($WorkS.Tables.Name))
+        # Safely check if worksheet has tables and Name property exists
+        if ($null -ne $WorkS -and $null -ne $WorkS.Tables -and $WorkS.Tables.Count -gt 0 -and $null -ne $WorkS.Tables[0] -and $null -ne $WorkS.Tables[0].Name -and ![string]::IsNullOrEmpty($WorkS.Tables[0].Name))
             {
-                $Number = $WorkS.Tables.Name.split('_')
-                $tmp = @{
-                    'Name' = $WorkS.name;
-                    'Size' = [int]$Number[1];
-                    'Size2' = if ($WorkS.name -in ('Subscriptions', 'Quota Usage', 'AdvisorScore', 'Outages', 'SupportTickets', 'Reservation Advisor')) {0}else{[int]$Number[1]}
-                }
-                if ($WorkS.name -notin ('Subscriptions', 'Quota Usage', 'AdvisorScore', 'Outages', 'SupportTickets', 'Reservation Advisor', 'Managed Identity', 'Backup'))
-                    {
-                        $TotalRes = $TotalRes + ([int]$Number[1])
+                $Number = $WorkS.Tables[0].Name.split('_')
+                if ($Number.Count -ge 2) {
+                    $tmp = @{
+                        'Name' = if ($null -ne $WorkS.name) { $WorkS.name } else { '' };
+                        'Size' = [int]$Number[1];
+                        'Size2' = if ($null -ne $WorkS.name -and $WorkS.name -in ('Subscriptions', 'Quota Usage', 'AdvisorScore', 'Outages', 'SupportTickets', 'Reservation Advisor')) {0}else{[int]$Number[1]}
                     }
-                $tmp
+                    if ($null -ne $WorkS.name -and $WorkS.name -notin ('Subscriptions', 'Quota Usage', 'AdvisorScore', 'Outages', 'SupportTickets', 'Reservation Advisor', 'Managed Identity', 'Backup'))
+                        {
+                            $TotalRes = $TotalRes + ([int]$Number[1])
+                        }
+                    $tmp
+                }
             }
     }
 
