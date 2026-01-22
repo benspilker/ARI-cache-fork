@@ -26,8 +26,27 @@ function Wait-ARIJob {
 
     while (get-job -Name $JobNames | Where-Object { $_.State -eq 'Running' }) {
         $jb = get-job -Name $JobNames
-        $c = (((($jb.count - ($jb | Where-Object { $_.State -eq 'Running' }).Count)) / $jb.Count) * 100)
-        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+"$JobType Jobs Still Running: "+[string]($jb | Where-Object { $_.State -eq 'Running' }).count)
+        # Ensure $jb is always an array for safe .Count access
+        if ($jb -isnot [System.Array]) {
+            $jb = @($jb)
+        }
+        
+        # Safely get running jobs count
+        $runningJobs = $jb | Where-Object { $_.State -eq 'Running' }
+        if ($runningJobs -isnot [System.Array]) {
+            $runningJobs = @($runningJobs)
+        }
+        
+        $jbCount = if ($null -ne $jb) { $jb.Count } else { 0 }
+        $runningCount = if ($null -ne $runningJobs) { $runningJobs.Count } else { 0 }
+        
+        if ($jbCount -gt 0) {
+            $c = ((($jbCount - $runningCount) / $jbCount) * 100)
+        } else {
+            $c = 100
+        }
+        
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+"$JobType Jobs Still Running: "+[string]$runningCount)
         $c = [math]::Round($c)
         Write-Progress -Id 1 -activity "Processing $JobType Jobs" -Status "$c% Complete." -PercentComplete $c
         Start-Sleep -Seconds $LoopTime
