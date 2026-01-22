@@ -39,9 +39,9 @@ Function Start-ARIReporOrchestration {
         Write-Host "[DEBUG] Start-ARIReporOrchestration: Start-ARIExcelJob completed successfully" -ForegroundColor Magenta
     } catch {
         $errorMsg = "Error in Start-ARIExcelJob: $($_.Exception.Message)"
-        $errorLine = $_.InvocationInfo.ScriptLineNumber
-        $errorFunc = $_.InvocationInfo.FunctionName
-        $errorStack = $_.ScriptStackTrace
+        $errorLine = if ($null -ne $_.InvocationInfo) { $_.InvocationInfo.ScriptLineNumber } else { "Unknown" }
+        $errorFunc = if ($null -ne $_.InvocationInfo -and $null -ne $_.InvocationInfo.FunctionName) { $_.InvocationInfo.FunctionName } else { "Unknown" }
+        $errorStack = if ($null -ne $_.ScriptStackTrace) { $_.ScriptStackTrace } else { "No stack trace available" }
         Write-Host "[ERROR] $errorMsg" -ForegroundColor Red
         Write-Host "[ERROR] Line: $errorLine, Function: $errorFunc" -ForegroundColor Red
         Write-Host "[ERROR] Stack: $errorStack" -ForegroundColor Red
@@ -59,9 +59,9 @@ Function Start-ARIReporOrchestration {
         Write-Host "[DEBUG] Start-ARIReporOrchestration: Start-ARIExcelExtraData completed successfully" -ForegroundColor Magenta
     } catch {
         $errorMsg = "Error in Start-ARIExcelExtraData: $($_.Exception.Message)"
-        $errorLine = $_.InvocationInfo.ScriptLineNumber
-        $errorFunc = $_.InvocationInfo.FunctionName
-        $errorStack = $_.ScriptStackTrace
+        $errorLine = if ($null -ne $_.InvocationInfo) { $_.InvocationInfo.ScriptLineNumber } else { "Unknown" }
+        $errorFunc = if ($null -ne $_.InvocationInfo -and $null -ne $_.InvocationInfo.FunctionName) { $_.InvocationInfo.FunctionName } else { "Unknown" }
+        $errorStack = if ($null -ne $_.ScriptStackTrace) { $_.ScriptStackTrace } else { "No stack trace available" }
         Write-Host "[ERROR] $errorMsg" -ForegroundColor Red
         Write-Host "[ERROR] Line: $errorLine, Function: $errorFunc" -ForegroundColor Red
         Write-Host "[ERROR] Stack: $errorStack" -ForegroundColor Red
@@ -79,9 +79,9 @@ Function Start-ARIReporOrchestration {
         Write-Host "[DEBUG] Start-ARIReporOrchestration: Start-ARIExtraReports completed successfully" -ForegroundColor Magenta
     } catch {
         $errorMsg = "Error in Start-ARIExtraReports: $($_.Exception.Message)"
-        $errorLine = $_.InvocationInfo.ScriptLineNumber
-        $errorFunc = $_.InvocationInfo.FunctionName
-        $errorStack = $_.ScriptStackTrace
+        $errorLine = if ($null -ne $_.InvocationInfo) { $_.InvocationInfo.ScriptLineNumber } else { "Unknown" }
+        $errorFunc = if ($null -ne $_.InvocationInfo -and $null -ne $_.InvocationInfo.FunctionName) { $_.InvocationInfo.FunctionName } else { "Unknown" }
+        $errorStack = if ($null -ne $_.ScriptStackTrace) { $_.ScriptStackTrace } else { "No stack trace available" }
         Write-Host "[ERROR] $errorMsg" -ForegroundColor Red
         Write-Host "[ERROR] Line: $errorLine, Function: $errorFunc" -ForegroundColor Red
         Write-Host "[ERROR] Stack: $errorStack" -ForegroundColor Red
