@@ -80,7 +80,7 @@ Else {
 
     if ($SmaResources) {
 
-        $TableName = ('TicketsTable_'+($SmaResources.'Resource U').count)
+        $TableName = ('TicketsTable_'+($SmaResources.'Resource U' | Measure-Object -Sum).Sum)
         $Style = New-ExcelStyle -HorizontalAlignment Center -AutoSize -NumberFormat '0'
 
         $cond = @()

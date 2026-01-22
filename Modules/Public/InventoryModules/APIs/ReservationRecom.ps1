@@ -69,7 +69,7 @@ Else {
 
     if ($SmaResources) {
 
-        $TableName = ('ReservRecTable_'+($SmaResources.'Resource U').count)
+        $TableName = ('ReservRecTable_'+($SmaResources.'Resource U' | Measure-Object -Sum).Sum)
 
         $Style = @()
         $Style += New-ExcelStyle -HorizontalAlignment Center -AutoSize -NumberFormat '0' -Range A:I

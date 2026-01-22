@@ -92,7 +92,7 @@ Else {
 
     if ($SmaResources) {
 
-        $TableName = ('OutageTab_'+($SmaResources.'Resource U').count)
+        $TableName = ('OutageTab_'+($SmaResources.'Resource U' | Measure-Object -Sum).Sum)
 
         $Style = @(
         New-ExcelStyle -HorizontalAlignment Center -AutoSize -NumberFormat '0' -Range 'A:E'

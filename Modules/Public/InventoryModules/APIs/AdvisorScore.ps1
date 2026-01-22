@@ -75,7 +75,7 @@ Else {
 
     if ($SmaResources) {
 
-        $TableName = ('AdvScTab_'+($SmaResources.'Resource U').count)
+        $TableName = ('AdvScTab_'+($SmaResources.'Resource U' | Measure-Object -Sum).Sum)
         $Style = New-ExcelStyle -HorizontalAlignment Center -AutoSize -NumberFormat '0'
 
         $condtxt = @()
