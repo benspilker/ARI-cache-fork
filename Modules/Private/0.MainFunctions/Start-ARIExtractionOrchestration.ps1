@@ -30,9 +30,10 @@ function Start-ARIExtractionOrchestration {
 
     Remove-Variable -Name GraphData -ErrorAction SilentlyContinue
 
-    $ResourcesCount = [string]$Resources.Count
-    $AdvisoryCount = [string]$Advisories.Count
-    $SecCenterCount = [string]$Security.Count
+    # Safely access Count properties - handle null/empty cases
+    $ResourcesCount = if ($null -ne $Resources) { [string]$Resources.Count } else { "0" }
+    $AdvisoryCount = if ($null -ne $Advisories) { [string]$Advisories.Count } else { "0" }
+    $SecCenterCount = if ($null -ne $Security) { [string]$Security.Count } else { "0" }
 
     if(!$SkipAPIs.IsPresent)
         {
@@ -50,7 +51,12 @@ function Start-ARIExtractionOrchestration {
             Remove-Variable APIResults -ErrorAction SilentlyContinue
         }
 
-    $PolicyCount = [string]$PolicyAssign.policyAssignments.Count
+    # Safely access PolicyAssign.policyAssignments.Count - handle null/empty cases
+    if ($null -ne $PolicyAssign -and $null -ne $PolicyAssign.policyAssignments) {
+        $PolicyCount = [string]$PolicyAssign.policyAssignments.Count
+    } else {
+        $PolicyCount = "0"
+    }
 
     if ($IncludeCosts.IsPresent) {
         $Costs = Get-ARICostInventory -Subscriptions $Subscriptions -Days 60 -Granularity 'Monthly'

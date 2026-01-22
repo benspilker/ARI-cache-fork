@@ -401,7 +401,9 @@ Function Invoke-CachedARI-Patched {
         
         # Extract subscription information from SubscriptionID parameter for Overview and Subscriptions sheets
         # Create minimal subscription objects with Name and Id properties
-        if ($SubscriptionID -and $SubscriptionID.Count -gt 0) {
+        # Safely check Count property
+        $subscriptionIDCount = if ($null -ne $SubscriptionID -and $SubscriptionID -is [System.Array]) { $SubscriptionID.Count } elseif ($null -ne $SubscriptionID) { 1 } else { 0 }
+        if ($subscriptionIDCount -gt 0) {
             Write-Host "[UseExistingCache] Creating subscription objects from SubscriptionID parameter" -ForegroundColor Green
             $Subscriptions = @()
             foreach ($subId in $SubscriptionID) {
@@ -514,7 +516,9 @@ Function Invoke-CachedARI-Patched {
         Write-Host "[UseExistingCache] Extracted $($Resources.Count) resource(s) from cache files" -ForegroundColor Green
         
         # Collect Policy and Advisor data if not skipped (requires authentication)
-        if ($needAuthForPolicyOrAdvisor -and $Subscriptions.Count -gt 0) {
+        # Safely check Subscriptions.Count
+        $subscriptionsCount = if ($null -ne $Subscriptions -and $Subscriptions -is [System.Array]) { $Subscriptions.Count } elseif ($null -ne $Subscriptions) { 1 } else { 0 }
+        if ($needAuthForPolicyOrAdvisor -and $subscriptionsCount -gt 0) {
             Write-Host "[UseExistingCache] Collecting Policy and Advisor data via API calls..." -ForegroundColor Yellow
             
             # Collect Advisor data if not skipped
@@ -523,7 +527,12 @@ Function Invoke-CachedARI-Patched {
                 try {
                     $GraphData = Start-ARIGraphExtraction -ManagementGroup $null -Subscriptions $Subscriptions -SubscriptionID $SubscriptionID -ResourceGroup $null -SecurityCenter $SecurityCenter -SkipAdvisory $false -IncludeTags $IncludeTags -TagKey $TagKey -TagValue $TagValue -AzureEnvironment $AzureEnvironment
                     $Advisories = $GraphData.Advisories
-                    $AdvisoryCount = [string]$Advisories.Count
+                    # Safely access Count property - handle null/empty cases
+                    if ($null -ne $Advisories) {
+                        $AdvisoryCount = [string]$Advisories.Count
+                    } else {
+                        $AdvisoryCount = "0"
+                    }
                     Write-Host "[UseExistingCache] Collected $AdvisoryCount Advisor recommendation(s)" -ForegroundColor Green
                     Remove-Variable -Name GraphData -ErrorAction SilentlyContinue
                 } catch {
@@ -541,7 +550,12 @@ Function Invoke-CachedARI-Patched {
                     $PolicyAssign = $APIResults.PolicyAssign
                     $PolicyDef = $APIResults.PolicyDef
                     $PolicySetDef = $APIResults.PolicySetDef
-                    $PolicyCount = [string]$PolicyAssign.policyAssignments.Count
+                    # Safely access Count property - handle null/empty cases
+                    if ($null -ne $PolicyAssign -and $null -ne $PolicyAssign.policyAssignments) {
+                        $PolicyCount = [string]$PolicyAssign.policyAssignments.Count
+                    } else {
+                        $PolicyCount = "0"
+                    }
                     Write-Host "[UseExistingCache] Collected $PolicyCount Policy assignment(s)" -ForegroundColor Green
                     Remove-Variable -Name APIResults -ErrorAction SilentlyContinue
                 } catch {
