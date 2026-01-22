@@ -69,7 +69,18 @@ Else {
 
     if ($SmaResources) {
 
-        $TableName = ('ReservRecTable_'+($SmaResources.'Resource U' | Measure-Object -Sum).Sum)
+        # Safely get Resource U sum - handle cases where property might not exist
+        $ResourceUSum = 0
+        try {
+            $ResourceUValues = $SmaResources | Select-Object -ExpandProperty 'Resource U' -ErrorAction SilentlyContinue
+            if ($ResourceUValues) {
+                $ResourceUSum = ($ResourceUValues | Measure-Object -Sum).Sum
+            }
+        } catch {
+            # If property doesn't exist, use count as fallback
+            $ResourceUSum = if ($SmaResources -is [System.Array]) { $SmaResources.Count } else { 1 }
+        }
+        $TableName = ('ReservRecTable_'+$ResourceUSum)
 
         $Style = @()
         $Style += New-ExcelStyle -HorizontalAlignment Center -AutoSize -NumberFormat '0' -Range A:I
