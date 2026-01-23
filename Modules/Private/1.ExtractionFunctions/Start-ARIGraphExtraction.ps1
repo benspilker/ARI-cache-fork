@@ -41,7 +41,17 @@ Function Start-ARIGraphExtraction {
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Powershell Version: ' + ([string]$psversiontable.psVersion))
 
     #Field for tags (already initialized above, but set value here)
-    if ($IncludeTags.IsPresent) {
+    # Handle IncludeTags parameter - it might be $null, a switch, or a boolean
+    $shouldIncludeTags = $false
+    if ($null -ne $IncludeTags) {
+        if ($IncludeTags -is [switch]) {
+            $shouldIncludeTags = $IncludeTags.IsPresent
+        } else {
+            # If it's not a switch, treat as boolean
+            $shouldIncludeTags = [bool]$IncludeTags
+        }
+    }
+    if ($shouldIncludeTags) {
         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+"Tags will be included")
         $GraphQueryTags = ",tags "
     } else {
@@ -245,7 +255,17 @@ Function Start-ARIGraphExtraction {
                     }
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Number of Advisors: '+ $AdvisorCount)
                 }
-            if ($SecurityCenter.IsPresent)
+            # Handle SecurityCenter parameter - it might be $null, a switch, or not provided
+            $shouldIncludeSecurityCenter = $false
+            if ($null -ne $SecurityCenter) {
+                if ($SecurityCenter -is [switch]) {
+                    $shouldIncludeSecurityCenter = $SecurityCenter.IsPresent
+                } else {
+                    # If it's not a switch, treat as boolean
+                    $shouldIncludeSecurityCenter = [bool]$SecurityCenter
+                }
+            }
+            if ($shouldIncludeSecurityCenter)
                 {
                     $GraphQuery = "securityresources $RGQueryExtension | where type =~ 'microsoft.security/assessments' and properties['status']['code'] == 'Unhealthy' $MGQueryExtension | order by id asc"
 
