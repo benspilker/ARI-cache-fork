@@ -553,7 +553,8 @@ function Start-ARIExtraReports {
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Subscriptions job not found - may have completed and been removed already.')
         }
     } else {
-        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Using script-scoped Subscriptions data: Count=' + (if ($AzSubs -is [System.Array]) { $AzSubs.Count } else { if ($null -eq $AzSubs) { 0 } else { 1 } }))
+        $subsCount = if ($AzSubs -is [System.Array]) { $AzSubs.Count } elseif ($null -eq $AzSubs) { 0 } else { 1 }
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Using script-scoped Subscriptions data: Count=' + $subsCount)
     }
     
     # Ensure AzSubs is an array for safe handling
@@ -574,9 +575,23 @@ function Start-ARIExtraReports {
             Build-ARISubsReport -File $File -Sub $AzSubs -IncludeCosts $IncludeCosts -TableStyle $TableStyle
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Build-ARISubsReport completed successfully')
         } catch {
-            $errorMsg = $_.Exception.Message
-            $errorLine = if ($null -ne $_.InvocationInfo) { $_.InvocationInfo.ScriptLineNumber } else { "Unknown" }
-            $errorFunc = if ($null -ne $_.InvocationInfo -and $null -ne $_.InvocationInfo.FunctionName) { $_.InvocationInfo.FunctionName } else { "Unknown" }
+            # Safe error handling - check property existence before accessing
+            $errorMsg = if ($null -ne $_ -and $null -ne $_.Exception) { $_.Exception.Message } else { "Unknown error" }
+            
+            $errorLine = "Unknown"
+            $errorFunc = "Unknown"
+            
+            try {
+                if ($null -ne $_ -and $null -ne $_.InvocationInfo) {
+                    $errorLine = if ($null -ne $_.InvocationInfo.ScriptLineNumber) { $_.InvocationInfo.ScriptLineNumber } else { "Unknown" }
+                    # Check if FunctionName property exists before accessing
+                    if ($_.InvocationInfo.PSObject.Properties.Name -contains 'FunctionName') {
+                        $errorFunc = $_.InvocationInfo.FunctionName
+                    }
+                }
+            } catch {
+                # Ignore errors accessing InvocationInfo
+            }
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error in Build-ARISubsReport: ' + $errorMsg)
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error at line: ' + $errorLine + ', Function: ' + $errorFunc)
             Write-Host "  [ERROR] Failed to generate Subscriptions sheet: $errorMsg" -ForegroundColor Red
