@@ -903,24 +903,45 @@ Function Invoke-CachedARI-Patched {
                                 }
                                 foreach ($apiResult in $APIResults) {
                                     if ($null -ne $apiResult.PolicyAssign) {
-                                        if ($apiResult.PolicyAssign -is [System.Array]) {
-                                            $allPolicyAssign += $apiResult.PolicyAssign
+                                        # Normalize to array before adding
+                                        $policyAssignToAdd = if ($apiResult.PolicyAssign -is [System.Array]) {
+                                            $apiResult.PolicyAssign
                                         } else {
-                                            $allPolicyAssign += $apiResult.PolicyAssign
+                                            @($apiResult.PolicyAssign)
+                                        }
+                                        # Ensure each item is added individually to avoid type issues
+                                        foreach ($item in $policyAssignToAdd) {
+                                            if ($null -ne $item) {
+                                                $allPolicyAssign += $item
+                                            }
                                         }
                                     }
                                     if ($null -ne $apiResult.PolicyDef) {
-                                        if ($apiResult.PolicyDef -is [System.Array]) {
-                                            $allPolicyDef += $apiResult.PolicyDef
+                                        # Normalize to array before adding
+                                        $policyDefToAdd = if ($apiResult.PolicyDef -is [System.Array]) {
+                                            $apiResult.PolicyDef
                                         } else {
-                                            $allPolicyDef += $apiResult.PolicyDef
+                                            @($apiResult.PolicyDef)
+                                        }
+                                        # Ensure each item is added individually to avoid type issues
+                                        foreach ($item in $policyDefToAdd) {
+                                            if ($null -ne $item) {
+                                                $allPolicyDef += $item
+                                            }
                                         }
                                     }
                                     if ($null -ne $apiResult.PolicySetDef) {
-                                        if ($apiResult.PolicySetDef -is [System.Array]) {
-                                            $allPolicySetDef += $apiResult.PolicySetDef
+                                        # Normalize to array before adding
+                                        $policySetDefToAdd = if ($apiResult.PolicySetDef -is [System.Array]) {
+                                            $apiResult.PolicySetDef
                                         } else {
-                                            $allPolicySetDef += $apiResult.PolicySetDef
+                                            @($apiResult.PolicySetDef)
+                                        }
+                                        # Ensure each item is added individually to avoid type issues
+                                        foreach ($item in $policySetDefToAdd) {
+                                            if ($null -ne $item) {
+                                                $allPolicySetDef += $item
+                                            }
                                         }
                                     }
                                 }
@@ -1215,7 +1236,20 @@ Function Invoke-CachedARI-Patched {
         # This bypasses Outages.ps1 module which has issues with cache data format
         # CRITICAL: Must be generated BEFORE Start-ARIExcelCustomization (Overview sheet)
         # because Overview sheet creates pivot tables that reference all data sheets
-        if ($null -ne $script:ResourceHealthEventsForOutages -and $script:ResourceHealthEventsForOutages.Count -gt 0) {
+        # Safely check if script-scoped variable exists and has data
+        $hasOutagesData = $false
+        try {
+            if (Get-Variable -Name 'ResourceHealthEventsForOutages' -Scope 'Script' -ErrorAction SilentlyContinue) {
+                if ($null -ne $script:ResourceHealthEventsForOutages -and $script:ResourceHealthEventsForOutages.Count -gt 0) {
+                    $hasOutagesData = $true
+                }
+            }
+        } catch {
+            # Variable doesn't exist - no outages data
+            $hasOutagesData = $false
+        }
+        
+        if ($hasOutagesData) {
                 Write-Host "[UseExistingCache] Generating Outages sheet directly using working logic..." -ForegroundColor Cyan
                 try {
                     # Ensure Subscriptions is available and is an array
