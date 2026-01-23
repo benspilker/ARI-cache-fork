@@ -215,7 +215,17 @@ Function Start-ARIGraphExtraction {
             }
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Number of Resource Containers: '+ $ContainerCount)
 
-            if (!($SkipAdvisory.IsPresent))
+            # Handle SkipAdvisory parameter - it might be $null, a switch, or not provided
+            $shouldSkipAdvisory = $false
+            if ($null -ne $SkipAdvisory) {
+                if ($SkipAdvisory -is [switch]) {
+                    $shouldSkipAdvisory = $SkipAdvisory.IsPresent
+                } else {
+                    # If it's not a switch, treat as boolean
+                    $shouldSkipAdvisory = [bool]$SkipAdvisory
+                }
+            }
+            if (!$shouldSkipAdvisory)
                 {
                     $GraphQuery = "advisorresources $RGQueryExtension $MGQueryExtension | where properties.impact in~ ('Medium','High') | order by id asc"
 
