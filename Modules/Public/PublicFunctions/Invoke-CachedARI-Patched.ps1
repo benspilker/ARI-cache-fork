@@ -948,8 +948,10 @@ Function Invoke-CachedARI-Patched {
         } catch {
             Write-Error "Error in Start-ARIExtraJobs: $($_.Exception.Message)"
             Write-Error "Stack trace: $($_.ScriptStackTrace)"
-            Write-Error "Line: $($_.InvocationInfo.ScriptLineNumber)"
-            Write-Error "Function: $($_.InvocationInfo.FunctionName)"
+            $errorLine = if ($null -ne $_.InvocationInfo) { $_.InvocationInfo.ScriptLineNumber } else { "Unknown" }
+            $errorFunc = if ($null -ne $_.InvocationInfo -and $null -ne $_.InvocationInfo.FunctionName) { $_.InvocationInfo.FunctionName } else { "Unknown" }
+            Write-Error "Line: $errorLine"
+            Write-Error "Function: $errorFunc"
             throw
         }
     } else {
@@ -1023,8 +1025,8 @@ Function Invoke-CachedARI-Patched {
             Start-ARIReporOrchestration -ReportCache $ReportCache -SecurityCenter $SecurityCenter -File $File -Quotas $Quotas -SkipPolicy $SkipPolicy -SkipAdvisory $SkipAdvisory -IncludeCosts $IncludeCosts -Automation $Automation -TableStyle $TableStyle -Advisories $Advisories
         } catch {
             $errorDetails = $_.Exception.Message
-            $errorLine = $_.InvocationInfo.ScriptLineNumber
-            $errorFunction = $_.InvocationInfo.FunctionName
+            $errorLine = if ($null -ne $_.InvocationInfo) { $_.InvocationInfo.ScriptLineNumber } else { "Unknown" }
+            $errorFunction = if ($null -ne $_.InvocationInfo -and $null -ne $_.InvocationInfo.FunctionName) { $_.InvocationInfo.FunctionName } else { "Unknown" }
             Write-Error "Excel generation failed in $errorFunction at line $errorLine : $errorDetails"
             Write-Error "Stack trace: $($_.ScriptStackTrace)"
             throw
