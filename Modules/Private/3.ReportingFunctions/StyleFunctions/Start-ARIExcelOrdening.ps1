@@ -67,25 +67,23 @@ function Start-ARIExcelOrdening {
             if ($null -ne $Ord -and $null -ne $Ord.Index -and $null -ne $Ord.Name) {
                 $targetSheet = $Excel.Workbook.Worksheets[$Ord.Name]
                 if ($null -ne $targetSheet) {
-                    if ($Loop -ne 0 -and $Order0.Count -gt ($Loop - 1) -and $null -ne $Order0[$Loop - 1] -and $null -ne $Order0[$Loop - 1].Name) {
-                        try {
-                            $afterSheet = $Excel.Workbook.Worksheets[$Order0[$Loop - 1].Name]
-                            if ($null -ne $afterSheet) {
-                                $targetSheet.Position = $afterSheet.Position + 1
+                    try {
+                        # Check if Position property exists before using it
+                        if ($targetSheet.PSObject.Properties.Name -contains 'Position') {
+                            if ($Loop -ne 0 -and $Order0.Count -gt ($Loop - 1) -and $null -ne $Order0[$Loop - 1] -and $null -ne $Order0[$Loop - 1].Name) {
+                                $afterSheet = $Excel.Workbook.Worksheets[$Order0[$Loop - 1].Name]
+                                if ($null -ne $afterSheet -and $afterSheet.PSObject.Properties.Name -contains 'Position') {
+                                    $targetSheet.Position = $afterSheet.Position + 1
+                                }
+                            } elseif ($Loop -eq 0 -and $null -ne $Order[0] -and $null -ne $Order[0].Name) {
+                                $afterSheet = $Excel.Workbook.Worksheets[$Order[0].Name]
+                                if ($null -ne $afterSheet -and $afterSheet.PSObject.Properties.Name -contains 'Position') {
+                                    $targetSheet.Position = $afterSheet.Position + 1
+                                }
                             }
-                        } catch {
-                            Write-Debug "  Warning: Could not move sheet $($Ord.Name): $_"
                         }
-                    }
-                    if ($Loop -eq 0 -and $null -ne $Order[0] -and $null -ne $Order[0].Name) {
-                        try {
-                            $afterSheet = $Excel.Workbook.Worksheets[$Order[0].Name]
-                            if ($null -ne $afterSheet) {
-                                $targetSheet.Position = $afterSheet.Position + 1
-                            }
-                        } catch {
-                            Write-Debug "  Warning: Could not move sheet $($Ord.Name): $_"
-                        }
+                    } catch {
+                        Write-Debug "  Warning: Could not move sheet $($Ord.Name): $_"
                     }
                 }
             }
@@ -97,7 +95,7 @@ function Start-ARIExcelOrdening {
     # Safely check for worksheets with Name property
     if ($null -ne $Worksheets) {
         $overviewSheet = $Excel.Workbook.Worksheets['Overview']
-        if ($null -ne $overviewSheet) {
+        if ($null -ne $overviewSheet -and $overviewSheet.PSObject.Properties.Name -contains 'Position') {
             $overviewPosition = $overviewSheet.Position
             $currentPosition = $overviewPosition + 1
             
@@ -106,7 +104,7 @@ function Start-ARIExcelOrdening {
             
             foreach ($sheetName in $sheetsToMove) {
                 $sheet = $Excel.Workbook.Worksheets[$sheetName]
-                if ($null -ne $sheet) {
+                if ($null -ne $sheet -and $sheet.PSObject.Properties.Name -contains 'Position') {
                     try {
                         $sheet.Position = $currentPosition
                         $currentPosition++
@@ -115,6 +113,9 @@ function Start-ARIExcelOrdening {
                     }
                 }
             }
+        } else {
+            # Position property not available - sheet ordering not supported in this EPPlus version
+            Write-Debug "  Sheet ordering skipped: Position property not available"
         }
     }
 
