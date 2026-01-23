@@ -34,8 +34,8 @@ function Start-ARIAdvisoryJob {
             # Handle advisories WITH resourceId (resource-level recommendations)
             if ($null -ne $data.resourceMetadata -and $null -ne $data.resourceMetadata.resourceId)
                 {
-                    $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
-                    $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
+                    $Savings = if ($null -ne $data.extendedProperties -and -not [string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){$data.extendedProperties.annualSavingsAmount}Else{0}
+                    $SavingsCurrency = if ($null -ne $data.extendedProperties -and -not [string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){$data.extendedProperties.savingsCurrency}Else{'USD'}
                     $Resource = $data.resourceMetadata.resourceId.split('/')
 
                     if ($Resource.Count -lt 4) {
@@ -71,13 +71,13 @@ function Start-ARIAdvisoryJob {
                         'Category'               = $data.category;
                         'Impact'                 = $data.impact;
                         'Description'            = if ($null -ne $data.shortDescription) { $data.shortDescription.problem } else { '' };
-                        'SKU'                    = $data.extendedProperties.sku;
-                        'Term'                   = $data.extendedProperties.term;
-                        'Look-back Period'       = $data.extendedProperties.lookbackPeriod;
-                        'Quantity'               = $data.extendedProperties.qty;
+                        'SKU'                    = if ($null -ne $data.extendedProperties) { $data.extendedProperties.sku } else { '' };
+                        'Term'                   = if ($null -ne $data.extendedProperties) { $data.extendedProperties.term } else { '' };
+                        'Look-back Period'       = if ($null -ne $data.extendedProperties) { $data.extendedProperties.lookbackPeriod } else { '' };
+                        'Quantity'               = if ($null -ne $data.extendedProperties) { $data.extendedProperties.qty } else { '' };
                         'Savings Currency'       = $SavingsCurrency;
                         'Annual Savings'         = "=$Savings";
-                        'Savings Region'         = $data.extendedProperties.region
+                        'Savings Region'         = if ($null -ne $data.extendedProperties) { $data.extendedProperties.region } else { '' }
                     }
                     $obj
                 }
@@ -99,8 +99,8 @@ function Start-ARIAdvisoryJob {
                     $ResourceType = if ($null -ne $data.impactedField) { $data.impactedField } else { '' }
                     $ResourceName = if ($null -ne $data.impactedValue) { $data.impactedValue } else { '' }
                     
-                    $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
-                    $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
+                    $Savings = if ($null -ne $data.extendedProperties -and -not [string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){$data.extendedProperties.annualSavingsAmount}Else{0}
+                    $SavingsCurrency = if ($null -ne $data.extendedProperties -and -not [string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){$data.extendedProperties.savingsCurrency}Else{'USD'}
 
                     $obj = @{
                         'Subscription'           = $Subscription;

@@ -73,13 +73,19 @@ function Start-ARIExtraReports {
     # Store Advisory data in script scope to prevent it from being cleared by memory cleanup
     $script:Adv = $null
     if (-not $skipAdvisoryCheck) {
+        # Check for Advisory job - it might be Completed, Failed, or not exist
         $AdvisoryJob = Get-Job -Name 'Advisory' -ErrorAction SilentlyContinue
         if ($null -ne $AdvisoryJob) {
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Advisory job found: State=' + $AdvisoryJob.State)
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Receiving Advisory job results before Policy cleanup.')
             while (get-job -Name 'Advisory' | Where-Object { $_.State -eq 'Running' }) {
                 Start-Sleep -Seconds 1
             }
             $script:Adv = Receive-Job -Name 'Advisory' -ErrorAction SilentlyContinue
+            # Check for job errors
+            if ($AdvisoryJob.State -eq 'Failed') {
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Advisory job failed. Error: ' + ($AdvisoryJob.Error | Out-String))
+            }
             Remove-Job -Name 'Advisory' -ErrorAction SilentlyContinue | Out-Null
             # Ensure Adv is an array for safe handling
             if ($null -eq $script:Adv) {
@@ -89,7 +95,7 @@ function Start-ARIExtraReports {
             }
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Advisory data received and stored in script scope: Count=' + $script:Adv.Count)
         } else {
-            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Advisory job not found when trying to receive results.')
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Advisory job not found when trying to receive results. Will use fallback processing.')
         }
     }
 
@@ -312,8 +318,8 @@ function Start-ARIExtraReports {
                                         $data = $advItem.PROPERTIES
                                         # Handle advisories WITH resourceId (resource-level recommendations)
                                         if ($null -ne $data -and $null -ne $data.resourceMetadata -and $null -ne $data.resourceMetadata.resourceId) {
-                                            $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
-                                            $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
+                                            $Savings = if ($null -ne $data.extendedProperties -and -not [string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){$data.extendedProperties.annualSavingsAmount}Else{0}
+                                            $SavingsCurrency = if ($null -ne $data.extendedProperties -and -not [string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){$data.extendedProperties.savingsCurrency}Else{'USD'}
                                             $Resource = $data.resourceMetadata.resourceId.split('/')
                                             # Add bounds checking for array access
                                             if ($Resource.Count -lt 4) {
@@ -357,13 +363,13 @@ function Start-ARIExtraReports {
                                                 'Category'               = $data.category;
                                                 'Impact'                 = $data.impact;
                                                 'Description'            = if ($null -ne $data.shortDescription) { $data.shortDescription.problem } else { '' };
-                                                'SKU'                    = $data.extendedProperties.sku;
-                                                'Term'                   = $data.extendedProperties.term;
-                                                'Look-back Period'       = $data.extendedProperties.lookbackPeriod;
-                                                'Quantity'               = $data.extendedProperties.qty;
+                                                'SKU'                    = if ($null -ne $data.extendedProperties) { $data.extendedProperties.sku } else { '' };
+                                                'Term'                   = if ($null -ne $data.extendedProperties) { $data.extendedProperties.term } else { '' };
+                                                'Look-back Period'       = if ($null -ne $data.extendedProperties) { $data.extendedProperties.lookbackPeriod } else { '' };
+                                                'Quantity'               = if ($null -ne $data.extendedProperties) { $data.extendedProperties.qty } else { '' };
                                                 'Savings Currency'       = $SavingsCurrency;
                                                 'Annual Savings'         = "=$Savings";
-                                                'Savings Region'         = $data.extendedProperties.region
+                                                'Savings Region'         = if ($null -ne $data.extendedProperties) { $data.extendedProperties.region } else { '' }
                                             }
                                             $Adv += $obj
                                         }
@@ -384,8 +390,8 @@ function Start-ARIExtraReports {
                                             $ResourceType = if ($null -ne $data.impactedField) { $data.impactedField } else { '' }
                                             $ResourceName = if ($null -ne $data.impactedValue) { $data.impactedValue } else { '' }
                                             
-                                            $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
-                                            $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
+                                            $Savings = if ($null -ne $data.extendedProperties -and -not [string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){$data.extendedProperties.annualSavingsAmount}Else{0}
+                                            $SavingsCurrency = if ($null -ne $data.extendedProperties -and -not [string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){$data.extendedProperties.savingsCurrency}Else{'USD'}
                                             
                                             $obj = @{
                                                 'Subscription'           = $Subscription;
@@ -427,8 +433,8 @@ function Start-ARIExtraReports {
                                     $data = $advItem.PROPERTIES
                                     # Handle advisories WITH resourceId (resource-level recommendations)
                                     if ($null -ne $data -and $null -ne $data.resourceMetadata -and $null -ne $data.resourceMetadata.resourceId) {
-                                        $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
-                                        $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
+                                        $Savings = if ($null -ne $data.extendedProperties -and -not [string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){$data.extendedProperties.annualSavingsAmount}Else{0}
+                                        $SavingsCurrency = if ($null -ne $data.extendedProperties -and -not [string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){$data.extendedProperties.savingsCurrency}Else{'USD'}
                                         $Resource = $data.resourceMetadata.resourceId.split('/')
                                         # Add bounds checking for array access
                                         if ($Resource.Count -lt 4) {
@@ -543,8 +549,8 @@ function Start-ARIExtraReports {
                                 $data = $advItem.PROPERTIES
                                 # Handle advisories WITH resourceId (resource-level recommendations)
                                 if ($null -ne $data -and $null -ne $data.resourceMetadata -and $null -ne $data.resourceMetadata.resourceId) {
-                                    $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
-                                    $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
+                                    $Savings = if ($null -ne $data.extendedProperties -and -not [string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){$data.extendedProperties.annualSavingsAmount}Else{0}
+                                    $SavingsCurrency = if ($null -ne $data.extendedProperties -and -not [string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){$data.extendedProperties.savingsCurrency}Else{'USD'}
                                     $Resource = $data.resourceMetadata.resourceId.split('/')
                                     # Add bounds checking for array access
                                     if ($Resource.Count -lt 4) {
