@@ -488,43 +488,56 @@ function Start-ARIExtraReports {
 
     Write-Progress -activity 'Azure Resource Inventory Subscriptions' -Status "50% Complete." -PercentComplete 50 -CurrentOperation "Building Subscriptions Sheet"
 
-    $SubscriptionsJob = Get-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
-    if ($null -ne $SubscriptionsJob) {
-        while ($SubscriptionsJob | Where-Object { $_.State -eq 'Running' }) {
-            Write-Progress -Id 1 -activity 'Processing Subscriptions' -Status "50% Complete." -PercentComplete 50
-            Start-Sleep -Seconds 2
-            $SubscriptionsJob = Get-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
-        }
-
-        # Check if job failed
-        if ($SubscriptionsJob.State -eq 'Failed') {
-            $jobError = Receive-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
-            Write-Error "Subscriptions job failed: $($SubscriptionsJob | Format-List | Out-String)"
-            if ($jobError) {
-                Write-Error "Job error output: $($jobError | Out-String)"
+    # Try multiple sources for Subscriptions data:
+    # 1. Script-scoped variable (from job results received earlier before cleanup)
+    # 2. Subscriptions job (if still available)
+    $AzSubs = $script:AzSubs
+    
+    if ($null -eq $AzSubs) {
+        # Fallback: try to receive from job if script-scoped variable is null
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Script-scoped Subscriptions data is null - checking for Subscriptions job...')
+        $SubscriptionsJob = Get-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
+        if ($null -ne $SubscriptionsJob) {
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Subscriptions job found: State=' + $SubscriptionsJob.State)
+            # Wait for job to complete if still running
+            while ($SubscriptionsJob.State -eq 'Running') {
+        Write-Progress -Id 1 -activity 'Processing Subscriptions' -Status "50% Complete." -PercentComplete 50
+        Start-Sleep -Seconds 2
+                $SubscriptionsJob = Get-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
+                if ($null -eq $SubscriptionsJob) { break }
             }
-            $AzSubs = @()
+            if ($null -ne $SubscriptionsJob) {
+                # Check if job failed
+                if ($SubscriptionsJob.State -eq 'Failed') {
+                    $jobError = Receive-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Subscriptions job failed: ' + ($jobError | Out-String))
+                    $AzSubs = @()
+                } else {
+                    try {
+                        $AzSubs = Receive-Job -Name 'Subscriptions' -ErrorAction Stop
+                        # Store in script scope for safety
+                        $script:AzSubs = $AzSubs
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Received Subscriptions data from job: Count=' + $AzSubs.Count)
+                    } catch {
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error receiving Subscriptions job results: ' + $_.Exception.Message)
+                        $AzSubs = @()
+                    }
+                }
+                Remove-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue | Out-Null
+            }
         } else {
-            try {
-                $AzSubs = Receive-Job -Name 'Subscriptions' -ErrorAction Stop
-            } catch {
-                Write-Error "Error receiving Subscriptions job results: $($_.Exception.Message)"
-                Write-Error "Stack trace: $($_.ScriptStackTrace)"
-                $AzSubs = @()
-            }
-        }
-        Remove-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue | Out-Null
-        
-        # Ensure AzSubs is an array for safe handling
-        if ($null -eq $AzSubs) {
-            $AzSubs = @()
-        } elseif ($AzSubs -isnot [System.Array]) {
-            # If it's a single object, wrap it in an array
-            $AzSubs = @($AzSubs)
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Subscriptions job not found - may have completed and been removed already.')
         }
     } else {
-        Write-Debug "  Warning: Subscriptions job not found - initializing empty array"
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Using script-scoped Subscriptions data: Count=' + $AzSubs.Count)
+    }
+    
+    # Ensure AzSubs is an array for safe handling
+    if ($null -eq $AzSubs) {
         $AzSubs = @()
+    } elseif ($AzSubs -isnot [System.Array]) {
+        # If it's a single object, wrap it in an array
+        $AzSubs = @($AzSubs)
     }
 
     Build-ARISubsReport -File $File -Sub $AzSubs -IncludeCosts $IncludeCosts -TableStyle $TableStyle

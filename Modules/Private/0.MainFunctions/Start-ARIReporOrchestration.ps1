@@ -51,6 +51,34 @@ Function Start-ARIReporOrchestration {
         throw
     }
 
+    # Receive Subscriptions job results BEFORE memory cleanup removes all jobs
+    $script:AzSubs = $null
+    $SubscriptionsJob = Get-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
+    if ($null -ne $SubscriptionsJob) {
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Receiving Subscriptions job results before memory cleanup.')
+        while ($SubscriptionsJob | Where-Object { $_.State -eq 'Running' }) {
+            Start-Sleep -Seconds 1
+            $SubscriptionsJob = Get-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
+            if ($null -eq $SubscriptionsJob) { break }
+        }
+        if ($null -ne $SubscriptionsJob) {
+            if ($SubscriptionsJob.State -eq 'Failed') {
+                $jobError = Receive-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Subscriptions job failed: ' + ($jobError | Out-String))
+                $script:AzSubs = @()
+            } else {
+                $script:AzSubs = Receive-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
+                if ($null -eq $script:AzSubs) {
+                    $script:AzSubs = @()
+                } elseif ($script:AzSubs -isnot [System.Array]) {
+                    $script:AzSubs = @($script:AzSubs)
+                }
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Subscriptions data received and stored in script scope: Count=' + $script:AzSubs.Count)
+            }
+            Remove-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue | Out-Null
+        }
+    }
+
     # Aggressive memory cleanup between Excel phases to prevent OOM
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Running aggressive memory cleanup after Start-ARIExcelJob.')
     try {
