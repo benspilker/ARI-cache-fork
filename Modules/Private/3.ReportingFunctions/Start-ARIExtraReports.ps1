@@ -505,8 +505,8 @@ function Start-ARIExtraReports {
                                         $ResourceType = if ($null -ne $data.impactedField) { $data.impactedField } else { '' }
                                         $ResourceName = if ($null -ne $data.impactedValue) { $data.impactedValue } else { '' }
                                         
-                                        $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
-                                        $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
+                                        $Savings = if ($null -ne $data.extendedProperties -and -not [string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){$data.extendedProperties.annualSavingsAmount}Else{0}
+                                        $SavingsCurrency = if ($null -ne $data.extendedProperties -and -not [string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){$data.extendedProperties.savingsCurrency}Else{'USD'}
                                         
                                         $obj = @{
                                             'Subscription'           = $Subscription;
@@ -621,8 +621,8 @@ function Start-ARIExtraReports {
                                     $ResourceType = if ($null -ne $data.impactedField) { $data.impactedField } else { '' }
                                     $ResourceName = if ($null -ne $data.impactedValue) { $data.impactedValue } else { '' }
                                     
-                                    $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
-                                    $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
+                                    $Savings = if ($null -ne $data.extendedProperties -and -not [string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){$data.extendedProperties.annualSavingsAmount}Else{0}
+                                    $SavingsCurrency = if ($null -ne $data.extendedProperties -and -not [string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){$data.extendedProperties.savingsCurrency}Else{'USD'}
                                     
                                     $obj = @{
                                         'Subscription'           = $Subscription;
