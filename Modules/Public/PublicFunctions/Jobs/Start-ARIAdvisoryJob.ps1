@@ -98,13 +98,43 @@ function Start-ARIAdvisoryJob {
                         'Category'               = $data.category;
                         'Impact'                 = $data.impact;
                         'Description'            = if ($null -ne $data.shortDescription) { $data.shortDescription.problem } else { '' };
-                        'SKU'                    = if ($null -ne $data.extendedProperties -and $null -ne $data.extendedProperties.sku) { $data.extendedProperties.sku } else { '' };
-                        'Term'                   = if ($null -ne $data.extendedProperties -and $null -ne $data.extendedProperties.term) { $data.extendedProperties.term } else { '' };
-                        'Look-back Period'       = if ($null -ne $data.extendedProperties -and $null -ne $data.extendedProperties.lookbackPeriod) { $data.extendedProperties.lookbackPeriod } else { '' };
-                        'Quantity'               = if ($null -ne $data.extendedProperties -and $null -ne $data.extendedProperties.qty) { $data.extendedProperties.qty } else { '' };
+                        'SKU'                    = if ($null -ne $data.extendedProperties) { 
+                            try { 
+                                if ($data.extendedProperties -is [hashtable] -and $data.extendedProperties.ContainsKey('sku')) { $data.extendedProperties.sku } 
+                                elseif ($data.extendedProperties.PSObject.Properties.Name -contains 'sku') { $data.extendedProperties.sku } 
+                                else { '' } 
+                            } catch { '' } 
+                        } else { '' };
+                        'Term'                   = if ($null -ne $data.extendedProperties) { 
+                            try { 
+                                if ($data.extendedProperties -is [hashtable] -and $data.extendedProperties.ContainsKey('term')) { $data.extendedProperties.term } 
+                                elseif ($data.extendedProperties.PSObject.Properties.Name -contains 'term') { $data.extendedProperties.term } 
+                                else { '' } 
+                            } catch { '' } 
+                        } else { '' };
+                        'Look-back Period'       = if ($null -ne $data.extendedProperties) { 
+                            try { 
+                                if ($data.extendedProperties -is [hashtable] -and $data.extendedProperties.ContainsKey('lookbackPeriod')) { $data.extendedProperties.lookbackPeriod } 
+                                elseif ($data.extendedProperties.PSObject.Properties.Name -contains 'lookbackPeriod') { $data.extendedProperties.lookbackPeriod } 
+                                else { '' } 
+                            } catch { '' } 
+                        } else { '' };
+                        'Quantity'               = if ($null -ne $data.extendedProperties) { 
+                            try { 
+                                if ($data.extendedProperties -is [hashtable] -and $data.extendedProperties.ContainsKey('qty')) { $data.extendedProperties.qty } 
+                                elseif ($data.extendedProperties.PSObject.Properties.Name -contains 'qty') { $data.extendedProperties.qty } 
+                                else { '' } 
+                            } catch { '' } 
+                        } else { '' };
                         'Savings Currency'       = $SavingsCurrency;
                         'Annual Savings'         = "=$Savings";
-                        'Savings Region'         = if ($null -ne $data.extendedProperties -and $null -ne $data.extendedProperties.region) { $data.extendedProperties.region } else { '' }
+                        'Savings Region'         = if ($null -ne $data.extendedProperties) { 
+                            try { 
+                                if ($data.extendedProperties -is [hashtable] -and $data.extendedProperties.ContainsKey('region')) { $data.extendedProperties.region } 
+                                elseif ($data.extendedProperties.PSObject.Properties.Name -contains 'region') { $data.extendedProperties.region } 
+                                else { '' } 
+                            } catch { '' } 
+                        } else { '' }
                     }
                     $obj
                 }
@@ -139,13 +169,43 @@ function Start-ARIAdvisoryJob {
                         'Category'               = if ($null -ne $data.category) { $data.category } else { '' };
                         'Impact'                 = if ($null -ne $data.impact) { $data.impact } else { '' };
                         'Description'            = if ($null -ne $data.shortDescription) { $data.shortDescription.problem } else { '' };
-                        'SKU'                    = if ($null -ne $data.extendedProperties -and $null -ne $data.extendedProperties.sku) { $data.extendedProperties.sku } else { '' };
-                        'Term'                   = if ($null -ne $data.extendedProperties -and $null -ne $data.extendedProperties.term) { $data.extendedProperties.term } else { '' };
-                        'Look-back Period'       = if ($null -ne $data.extendedProperties -and $null -ne $data.extendedProperties.lookbackPeriod) { $data.extendedProperties.lookbackPeriod } else { '' };
-                        'Quantity'               = if ($null -ne $data.extendedProperties -and $null -ne $data.extendedProperties.qty) { $data.extendedProperties.qty } else { '' };
+                        'SKU'                    = if ($null -ne $data.extendedProperties) { 
+                            try { 
+                                if ($data.extendedProperties -is [hashtable] -and $data.extendedProperties.ContainsKey('sku')) { $data.extendedProperties.sku } 
+                                elseif ($data.extendedProperties.PSObject.Properties.Name -contains 'sku') { $data.extendedProperties.sku } 
+                                else { '' } 
+                            } catch { '' } 
+                        } else { '' };
+                        'Term'                   = if ($null -ne $data.extendedProperties) { 
+                            try { 
+                                if ($data.extendedProperties -is [hashtable] -and $data.extendedProperties.ContainsKey('term')) { $data.extendedProperties.term } 
+                                elseif ($data.extendedProperties.PSObject.Properties.Name -contains 'term') { $data.extendedProperties.term } 
+                                else { '' } 
+                            } catch { '' } 
+                        } else { '' };
+                        'Look-back Period'       = if ($null -ne $data.extendedProperties) { 
+                            try { 
+                                if ($data.extendedProperties -is [hashtable] -and $data.extendedProperties.ContainsKey('lookbackPeriod')) { $data.extendedProperties.lookbackPeriod } 
+                                elseif ($data.extendedProperties.PSObject.Properties.Name -contains 'lookbackPeriod') { $data.extendedProperties.lookbackPeriod } 
+                                else { '' } 
+                            } catch { '' } 
+                        } else { '' };
+                        'Quantity'               = if ($null -ne $data.extendedProperties) { 
+                            try { 
+                                if ($data.extendedProperties -is [hashtable] -and $data.extendedProperties.ContainsKey('qty')) { $data.extendedProperties.qty } 
+                                elseif ($data.extendedProperties.PSObject.Properties.Name -contains 'qty') { $data.extendedProperties.qty } 
+                                else { '' } 
+                            } catch { '' } 
+                        } else { '' };
                         'Savings Currency'       = $SavingsCurrency;
                         'Annual Savings'         = "=$Savings";
-                        'Savings Region'         = if ($null -ne $data.extendedProperties -and $null -ne $data.extendedProperties.region) { $data.extendedProperties.region } else { '' }
+                        'Savings Region'         = if ($null -ne $data.extendedProperties) { 
+                            try { 
+                                if ($data.extendedProperties -is [hashtable] -and $data.extendedProperties.ContainsKey('region')) { $data.extendedProperties.region } 
+                                elseif ($data.extendedProperties.PSObject.Properties.Name -contains 'region') { $data.extendedProperties.region } 
+                                else { '' } 
+                            } catch { '' } 
+                        } else { '' }
                     }
                     $obj
                 }
