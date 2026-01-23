@@ -34,8 +34,37 @@ function Start-ARIAdvisoryJob {
             # Handle advisories WITH resourceId (resource-level recommendations)
             if ($null -ne $data.resourceMetadata -and $null -ne $data.resourceMetadata.resourceId)
                 {
-                    $Savings = if ($null -ne $data.extendedProperties -and -not [string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){$data.extendedProperties.annualSavingsAmount}Else{0}
-                    $SavingsCurrency = if ($null -ne $data.extendedProperties -and -not [string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){$data.extendedProperties.savingsCurrency}Else{'USD'}
+                    # Safely access annualSavingsAmount
+                    $Savings = 0
+                    if ($null -ne $data.extendedProperties) {
+                        try {
+                            $hasAmount = $false
+                            if ($data.extendedProperties -is [hashtable]) {
+                                $hasAmount = $data.extendedProperties.ContainsKey('annualSavingsAmount')
+                            } else {
+                                $hasAmount = $data.extendedProperties.PSObject.Properties.Name -contains 'annualSavingsAmount'
+                            }
+                            if ($hasAmount -and -not [string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)) {
+                                $Savings = $data.extendedProperties.annualSavingsAmount
+                            }
+                        } catch { }
+                    }
+                    
+                    # Safely access savingsCurrency
+                    $SavingsCurrency = 'USD'
+                    if ($null -ne $data.extendedProperties) {
+                        try {
+                            $hasCurrency = $false
+                            if ($data.extendedProperties -is [hashtable]) {
+                                $hasCurrency = $data.extendedProperties.ContainsKey('savingsCurrency')
+                            } else {
+                                $hasCurrency = $data.extendedProperties.PSObject.Properties.Name -contains 'savingsCurrency'
+                            }
+                            if ($hasCurrency -and -not [string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)) {
+                                $SavingsCurrency = $data.extendedProperties.savingsCurrency
+                            }
+                        } catch { }
+                    }
                     $Resource = $data.resourceMetadata.resourceId.split('/')
 
                     # Safely extract resource information with bounds checking
@@ -156,8 +185,37 @@ function Start-ARIAdvisoryJob {
                     $ResourceType = if ($null -ne $data.impactedField) { $data.impactedField } else { '' }
                     $ResourceName = if ($null -ne $data.impactedValue) { $data.impactedValue } else { '' }
                     
-                    $Savings = if ($null -ne $data.extendedProperties -and -not [string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){$data.extendedProperties.annualSavingsAmount}Else{0}
-                    $SavingsCurrency = if ($null -ne $data.extendedProperties -and -not [string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){$data.extendedProperties.savingsCurrency}Else{'USD'}
+                    # Safely access annualSavingsAmount
+                    $Savings = 0
+                    if ($null -ne $data.extendedProperties) {
+                        try {
+                            $hasAmount = $false
+                            if ($data.extendedProperties -is [hashtable]) {
+                                $hasAmount = $data.extendedProperties.ContainsKey('annualSavingsAmount')
+                            } else {
+                                $hasAmount = $data.extendedProperties.PSObject.Properties.Name -contains 'annualSavingsAmount'
+                            }
+                            if ($hasAmount -and -not [string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)) {
+                                $Savings = $data.extendedProperties.annualSavingsAmount
+                            }
+                        } catch { }
+                    }
+                    
+                    # Safely access savingsCurrency
+                    $SavingsCurrency = 'USD'
+                    if ($null -ne $data.extendedProperties) {
+                        try {
+                            $hasCurrency = $false
+                            if ($data.extendedProperties -is [hashtable]) {
+                                $hasCurrency = $data.extendedProperties.ContainsKey('savingsCurrency')
+                            } else {
+                                $hasCurrency = $data.extendedProperties.PSObject.Properties.Name -contains 'savingsCurrency'
+                            }
+                            if ($hasCurrency -and -not [string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)) {
+                                $SavingsCurrency = $data.extendedProperties.savingsCurrency
+                            }
+                        } catch { }
+                    }
 
                     $obj = @{
                         'Subscription'           = $Subscription;
