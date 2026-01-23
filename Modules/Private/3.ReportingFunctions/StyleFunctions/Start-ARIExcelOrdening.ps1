@@ -57,27 +57,35 @@ function Start-ARIExcelOrdening {
             if ($null -ne $Ord -and $null -ne $Ord.Index -and $null -ne $Ord.Name) {
                 $targetSheet = $WorksheetsCollection[$Ord.Name]
                 if ($null -ne $targetSheet) {
-                    if ($Loop -ne 0 -and $Order0.Count -gt ($Loop - 1) -and $null -ne $Order0[$Loop - 1] -and $null -ne $Order0[$Loop - 1].Name) {
-                        try {
-                            $afterSheet = $WorksheetsCollection[$Order0[$Loop - 1].Name]
-                            if ($null -ne $afterSheet) {
-                                # Use EPPlus Position property to move sheet after target
-                                $targetSheet.Position = $afterSheet.Position + 1
+                    # Check if Position property exists before using it
+                    $hasPositionProperty = $targetSheet.PSObject.Properties.Name -contains 'Position'
+                    
+                    if ($hasPositionProperty) {
+                        if ($Loop -ne 0 -and $Order0.Count -gt ($Loop - 1) -and $null -ne $Order0[$Loop - 1] -and $null -ne $Order0[$Loop - 1].Name) {
+                            try {
+                                $afterSheet = $WorksheetsCollection[$Order0[$Loop - 1].Name]
+                                if ($null -ne $afterSheet -and $afterSheet.PSObject.Properties.Name -contains 'Position') {
+                                    # Use EPPlus Position property to move sheet after target
+                                    $targetSheet.Position = $afterSheet.Position + 1
+                                }
+                            } catch {
+                                Write-Debug "  Warning: Could not move sheet $($Ord.Name): $_"
                             }
-                        } catch {
-                            Write-Debug "  Warning: Could not move sheet $($Ord.Name): $_"
                         }
-                    }
-                    if ($Loop -eq 0 -and $null -ne $Order[0] -and $null -ne $Order[0].Name) {
-                        try {
-                            $afterSheet = $WorksheetsCollection[$Order[0].Name]
-                            if ($null -ne $afterSheet) {
-                                # Use EPPlus Position property to move sheet after target
-                                $targetSheet.Position = $afterSheet.Position + 1
+                        if ($Loop -eq 0 -and $null -ne $Order[0] -and $null -ne $Order[0].Name) {
+                            try {
+                                $afterSheet = $WorksheetsCollection[$Order[0].Name]
+                                if ($null -ne $afterSheet -and $afterSheet.PSObject.Properties.Name -contains 'Position') {
+                                    # Use EPPlus Position property to move sheet after target
+                                    $targetSheet.Position = $afterSheet.Position + 1
+                                }
+                            } catch {
+                                Write-Debug "  Warning: Could not move sheet $($Ord.Name): $_"
                             }
-                        } catch {
-                            Write-Debug "  Warning: Could not move sheet $($Ord.Name): $_"
                         }
+                    } else {
+                        # Position property not available - skip ordering for this sheet
+                        # This is non-critical, sheets will remain in creation order
                     }
                 }
             }
@@ -89,57 +97,49 @@ function Start-ARIExcelOrdening {
     # Reorder special sheets after Overview using EPPlus Position property
     $overviewSheet = $WorksheetsCollection['Overview']
     if ($null -ne $overviewSheet) {
-        # First, ensure Overview is at position 0
-        try {
-            if ($overviewSheet.PSObject.Properties.Name -contains 'Position') {
+        # Check if Position property is available
+        $positionAvailable = $overviewSheet.PSObject.Properties.Name -contains 'Position'
+        
+        if ($positionAvailable) {
+            # First, ensure Overview is at position 0
+            try {
                 $overviewSheet.Position = 0
+            } catch {
+                Write-Debug "  Warning: Could not set Overview position: $_"
             }
-        } catch {
-            Write-Debug "  Warning: Could not set Overview position: $_"
-        }
-        
-        # Define sheets to move after Overview in order
-        $sheetsToMove = @('Advisor', 'Policy', 'Security Center', 'Quota Usage', 'AdvisorScore', 'Support Tickets', 'Reservation Advisor', 'Subscriptions')
-        
-        # Collect all sheets that exist
-        $sheetsToReorder = @()
-        foreach ($sheetName in $sheetsToMove) {
-            $sheet = $WorksheetsCollection[$sheetName]
-            if ($null -ne $sheet) {
-                $sheetsToReorder += [PSCustomObject]@{
-                    Name = $sheetName
-                    Sheet = $sheet
+            
+            # Define sheets to move after Overview in order
+            $sheetsToMove = @('Advisor', 'Policy', 'Security Center', 'Quota Usage', 'AdvisorScore', 'Support Tickets', 'Reservation Advisor', 'Subscriptions')
+            
+            # Collect all sheets that exist and have Position property
+            $sheetsToReorder = @()
+            foreach ($sheetName in $sheetsToMove) {
+                $sheet = $WorksheetsCollection[$sheetName]
+                if ($null -ne $sheet -and $sheet.PSObject.Properties.Name -contains 'Position') {
+                    $sheetsToReorder += [PSCustomObject]@{
+                        Name = $sheetName
+                        Sheet = $sheet
+                    }
                 }
             }
-        }
-        
-        # Set positions sequentially after Overview (position 0)
-        if ($sheetsToReorder.Count -gt 0) {
-            $currentPosition = 1  # Start after Overview (position 0)
             
-            foreach ($sheetInfo in $sheetsToReorder) {
-                try {
-                    if ($sheetInfo.Sheet.PSObject.Properties.Name -contains 'Position') {
+            # Set positions sequentially after Overview (position 0)
+            if ($sheetsToReorder.Count -gt 0) {
+                $currentPosition = 1  # Start after Overview (position 0)
+                
+                foreach ($sheetInfo in $sheetsToReorder) {
+                    try {
                         $sheetInfo.Sheet.Position = $currentPosition
                         $currentPosition++
-                    } else {
-                        # Fallback: Try using MoveAfter if available
-                        try {
-                            if ($currentPosition -eq 1) {
-                                $WorksheetsCollection.MoveAfter($sheetInfo.Name, 'Overview')
-                            } else {
-                                $prevSheetName = $sheetsToReorder[$currentPosition - 2].Name
-                                $WorksheetsCollection.MoveAfter($sheetInfo.Name, $prevSheetName)
-                            }
-                            $currentPosition++
-                        } catch {
-                            Write-Debug "  Warning: Could not move $($sheetInfo.Name) sheet (Position property not available)"
-                        }
+                    } catch {
+                        Write-Debug "  Warning: Could not move $($sheetInfo.Name) sheet: $_"
                     }
-                } catch {
-                    Write-Debug "  Warning: Could not move $($sheetInfo.Name) sheet: $_"
                 }
             }
+        } else {
+            # Position property not available - skip ordering (non-critical)
+            # Sheets will remain in creation order
+            Write-Debug "  Position property not available - sheet ordering skipped (cosmetic only)"
         }
     }
 
