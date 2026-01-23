@@ -432,7 +432,15 @@ Function Invoke-CachedARI-Patched {
                         $policyCount = 0
                         if ($null -ne $PolicyAssign) {
                             if ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
-                                if ($PolicyAssign.policyAssignments -is [System.Array]) {
+                                # Safely check if policyAssignments property exists before accessing
+                                $hasPolicyAssignments = $false
+                                if ($PolicyAssign -is [PSCustomObject]) {
+                                    $hasPolicyAssignments = $PolicyAssign.PSObject.Properties.Name -contains 'policyAssignments'
+                                } elseif ($PolicyAssign -is [System.Collections.Hashtable]) {
+                                    $hasPolicyAssignments = $PolicyAssign.ContainsKey('policyAssignments')
+                                }
+                                
+                                if ($hasPolicyAssignments -and $PolicyAssign.policyAssignments -is [System.Array]) {
                                     $policyCount = $PolicyAssign.policyAssignments.Count
                                 }
                             } elseif ($PolicyAssign -is [System.Array]) {
@@ -717,7 +725,15 @@ Function Invoke-CachedARI-Patched {
             $hasPolicyData = $false
             if ($null -ne $PolicyAssign) {
                 if ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
-                    if ($PolicyAssign.policyAssignments -is [System.Array] -and $PolicyAssign.policyAssignments.Count -gt 0) {
+                    # Safely check if policyAssignments property exists before accessing
+                    $hasPolicyAssignments = $false
+                    if ($PolicyAssign -is [PSCustomObject]) {
+                        $hasPolicyAssignments = $PolicyAssign.PSObject.Properties.Name -contains 'policyAssignments'
+                    } elseif ($PolicyAssign -is [System.Collections.Hashtable]) {
+                        $hasPolicyAssignments = $PolicyAssign.ContainsKey('policyAssignments')
+                    }
+                    
+                    if ($hasPolicyAssignments -and $PolicyAssign.policyAssignments -is [System.Array] -and $PolicyAssign.policyAssignments.Count -gt 0) {
                         $hasPolicyData = $true
                     }
                 } elseif ($PolicyAssign -is [System.Array] -and $PolicyAssign.Count -gt 0) {
@@ -796,7 +812,15 @@ Function Invoke-CachedARI-Patched {
                     
                     try {
                         # Create a switch parameter for SkipPolicy (Get-ARIAPIResources expects a switch)
-                        $skipPolicySwitch = [switch]$false
+                        # Respect the SkipPolicy parameter passed to Invoke-CachedARI-Patched
+                        $skipPolicySwitch = if ($SkipPolicy -is [switch]) { 
+                            $SkipPolicy 
+                        } else { 
+                            [switch]($SkipPolicy -eq $true)
+                        }
+                        
+                        # Always call Get-ARIAPIResources to get Resource Health events (needed for Outages sheet)
+                        # But respect SkipPolicy flag for Policy data collection
                         $APIResults = Get-ARIAPIResources -Subscriptions $Subscriptions -AzureEnvironment $AzureEnvironment -SkipPolicy:$skipPolicySwitch
                         
                         # Collect Resource Health events (needed for Outages sheet)
@@ -862,7 +886,7 @@ Function Invoke-CachedARI-Patched {
                             }
                         }
                         
-                        # Extract Policy data from APIResults
+                        # Extract Policy data from APIResults ONLY if SkipPolicy is false
                         # Get-ARIAPIResources returns array of hashtables
                         # In normal flow, Start-ARIExtractionOrchestration does: $Resources += $APIResults.ResourceHealth
                         # This works because PowerShell automatically expands array properties
@@ -870,55 +894,74 @@ Function Invoke-CachedARI-Patched {
                         $allPolicyAssign = @()
                         $allPolicyDef = @()
                         $allPolicySetDef = @()
-                        if ($null -ne $APIResults) {
-                            if ($APIResults -isnot [System.Array]) {
-                                $APIResults = @($APIResults)
-                            }
-                            foreach ($apiResult in $APIResults) {
-                                if ($null -ne $apiResult.PolicyAssign) {
-                                    if ($apiResult.PolicyAssign -is [System.Array]) {
-                                        $allPolicyAssign += $apiResult.PolicyAssign
-                                    } else {
-                                        $allPolicyAssign += $apiResult.PolicyAssign
+                        
+                        # Only extract Policy data if SkipPolicy is false
+                        if (-not $skipPolicySwitch.IsPresent) {
+                            if ($null -ne $APIResults) {
+                                if ($APIResults -isnot [System.Array]) {
+                                    $APIResults = @($APIResults)
+                                }
+                                foreach ($apiResult in $APIResults) {
+                                    if ($null -ne $apiResult.PolicyAssign) {
+                                        if ($apiResult.PolicyAssign -is [System.Array]) {
+                                            $allPolicyAssign += $apiResult.PolicyAssign
+                                        } else {
+                                            $allPolicyAssign += $apiResult.PolicyAssign
+                                        }
+                                    }
+                                    if ($null -ne $apiResult.PolicyDef) {
+                                        if ($apiResult.PolicyDef -is [System.Array]) {
+                                            $allPolicyDef += $apiResult.PolicyDef
+                                        } else {
+                                            $allPolicyDef += $apiResult.PolicyDef
+                                        }
+                                    }
+                                    if ($null -ne $apiResult.PolicySetDef) {
+                                        if ($apiResult.PolicySetDef -is [System.Array]) {
+                                            $allPolicySetDef += $apiResult.PolicySetDef
+                                        } else {
+                                            $allPolicySetDef += $apiResult.PolicySetDef
+                                        }
                                     }
                                 }
-                                if ($null -ne $apiResult.PolicyDef) {
-                                    if ($apiResult.PolicyDef -is [System.Array]) {
-                                        $allPolicyDef += $apiResult.PolicyDef
-                                    } else {
-                                        $allPolicyDef += $apiResult.PolicyDef
-                                    }
-                                }
-                                if ($null -ne $apiResult.PolicySetDef) {
-                                    if ($apiResult.PolicySetDef -is [System.Array]) {
-                                        $allPolicySetDef += $apiResult.PolicySetDef
-                                    } else {
-                                        $allPolicySetDef += $apiResult.PolicySetDef
-                                    }
-                                }
                             }
-                        }
-                        # Set Policy variables (keep existing structure for compatibility)
-                        $PolicyAssign = $allPolicyAssign
-                        $PolicyDef = $allPolicyDef
-                        $PolicySetDef = $allPolicySetDef
-                        # Safely access Count property - handle null/empty cases
-                        if ($null -ne $PolicyAssign) {
-                            if ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
-                                if ($PolicyAssign.policyAssignments -is [System.Array]) {
-                                    $PolicyCount = [string]$PolicyAssign.policyAssignments.Count
-                                } else {
-                                    $PolicyCount = "0"
-                                }
-                            } elseif ($PolicyAssign -is [System.Array]) {
-                                $PolicyCount = if ($null -ne $PolicyAssign -and $PolicyAssign -is [System.Array]) { [string]$PolicyAssign.Count } else { "0" }
-                            } else {
-                                $PolicyCount = "1"
-                            }
-                        } else {
+                            # Set Policy variables (keep existing structure for compatibility)
+                            $PolicyAssign = $allPolicyAssign
+                            $PolicyDef = $allPolicyDef
+                            $PolicySetDef = $allPolicySetDef
+                            # Safely access Count property - handle null/empty cases
                             $PolicyCount = "0"
+                            if ($null -ne $PolicyAssign) {
+                                if ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
+                                    # Safely check if policyAssignments property exists before accessing
+                                    $hasPolicyAssignments = $false
+                                    if ($PolicyAssign -is [PSCustomObject]) {
+                                        $hasPolicyAssignments = $PolicyAssign.PSObject.Properties.Name -contains 'policyAssignments'
+                                    } elseif ($PolicyAssign -is [System.Collections.Hashtable]) {
+                                        $hasPolicyAssignments = $PolicyAssign.ContainsKey('policyAssignments')
+                                    }
+                                    
+                                    if ($hasPolicyAssignments -and $PolicyAssign.policyAssignments -is [System.Array]) {
+                                        $PolicyCount = [string]$PolicyAssign.policyAssignments.Count
+                                    } else {
+                                        $PolicyCount = "0"
+                                    }
+                                } elseif ($PolicyAssign -is [System.Array]) {
+                                    $PolicyCount = if ($null -ne $PolicyAssign -and $PolicyAssign -is [System.Array]) { [string]$PolicyAssign.Count } else { "0" }
+                                } else {
+                                    $PolicyCount = "1"
+                                }
+                            }
+                            Write-Host "[UseExistingCache] Collected $PolicyCount Policy assignment(s) via API call" -ForegroundColor Green
+                        } else {
+                            # SkipPolicy is true - initialize empty Policy variables
+                            $PolicyAssign = @{ policyAssignments = @() }
+                            $PolicyDef = @()
+                            $PolicySetDef = @()
+                            $PolicyCount = "0"
+                            Write-Host "[UseExistingCache] Skipped Policy data collection (SkipPolicy=true)" -ForegroundColor Gray
                         }
-                        Write-Host "[UseExistingCache] Collected $PolicyCount Policy assignment(s) via API call" -ForegroundColor Green
+                        
                         Remove-Variable -Name APIResults -ErrorAction SilentlyContinue
                         
                         # Aggressive memory cleanup after Policy API call
