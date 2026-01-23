@@ -37,8 +37,18 @@ function Start-ARIExtraJobs {
             $IncludeCosts,
             $CostData)
 
-    $ARIModule = 'AzureResourceInventory'
-    #$ARIModule = 'C:\usr\src\PSModules\AzureResourceInventory\AzureResourceInventory'
+    # Use resolved module path if available (set by Windmill script), otherwise fall back to module name
+    # This matches the test script logic that explicitly resolves the path
+    if ($null -ne $script:ARIModulePath) {
+        $ARIModule = $script:ARIModulePath
+        Write-Debug "Start-ARIExtraJobs: Using resolved module path: $ARIModule"
+        Write-Host "  [DEBUG] Start-ARIExtraJobs: Using resolved module path: $ARIModule" -ForegroundColor Gray
+    } else {
+        $ARIModule = 'AzureResourceInventory'
+        Write-Debug "Start-ARIExtraJobs: Using module name (path not resolved): $ARIModule"
+        Write-Host "  [WARNING] Start-ARIExtraJobs: Module path not resolved, using module name: $ARIModule" -ForegroundColor Yellow
+        Write-Host "  [WARNING] This may cause the Subscriptions job to fail if the module is not in the standard path" -ForegroundColor Yellow
+    }
 
     <######################################################### DRAW IO DIAGRAM JOB ######################################################################>
 
@@ -199,6 +209,11 @@ function Start-ARIExtraJobs {
         }
         
         Write-Debug "Start-ARIExtraJobs: Subscriptions count = $($Subscriptions.Count), Resources count = $($Resources.Count)"
+        Write-Host "  [DEBUG] Start-ARIExtraJobs: Creating Subscriptions job with:" -ForegroundColor Gray
+        Write-Host "    Subscriptions: $($Subscriptions.Count)" -ForegroundColor Gray
+        Write-Host "    Resources: $($Resources.Count)" -ForegroundColor Gray
+        Write-Host "    ARIModule: $ARIModule" -ForegroundColor Gray
+        Write-Host "    ARIModule exists: $(Test-Path $ARIModule -ErrorAction SilentlyContinue)" -ForegroundColor $(if (Test-Path $ARIModule -ErrorAction SilentlyContinue) { 'Green' } else { 'Red' })
         
         Invoke-ARISubJob -Subscriptions $Subscriptions -Automation $Automation -Resources $Resources -CostData $CostData -ARIModule $ARIModule
     } catch {

@@ -78,12 +78,100 @@ Function Start-ARIReporOrchestration {
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Subscriptions job final state: ' + $SubscriptionsJob.State)
             
             if ($SubscriptionsJob.State -eq 'Failed') {
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Subscriptions job state: Failed')
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Subscriptions job final state: Failed')
+                
+                # Enhanced error logging - use Write-Host for critical errors so they're always visible
+                Write-Host "  [ERROR] Subscriptions job failed!" -ForegroundColor Red
+                
+                # Try to get error information from the failed job
                 $jobError = Receive-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
-                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Subscriptions job failed: ' + ($jobError | Out-String))
-                if ($SubscriptionsJob | Get-Member -Name 'Error' -ErrorAction SilentlyContinue) {
-                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Subscriptions job error details: ' + ($SubscriptionsJob.Error | Out-String))
+                $jobErrorStream = Receive-Job -Name 'Subscriptions' -ErrorStream -ErrorAction SilentlyContinue
+                
+                # Get job exception details
+                if ($SubscriptionsJob.Error) {
+                    Write-Host "  [ERROR] Job Error property:" -ForegroundColor Yellow
+                    foreach ($errorRecord in $SubscriptionsJob.Error) {
+                        Write-Host "    Exception: $($errorRecord.Exception.Message)" -ForegroundColor Red
+                        Write-Host "    Type: $($errorRecord.Exception.GetType().FullName)" -ForegroundColor Red
+                        if ($errorRecord.Exception.InnerException) {
+                            Write-Host "    Inner Exception: $($errorRecord.Exception.InnerException.Message)" -ForegroundColor Red
+                        }
+                        if ($errorRecord.ScriptStackTrace) {
+                            Write-Host "    Stack Trace: $($errorRecord.ScriptStackTrace)" -ForegroundColor Red
+                        }
+                    }
                 }
-                $script:AzSubs = @()
+                
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Subscriptions job failed')
+                if ($null -ne $jobError) {
+                    Write-Host "  [ERROR] Job output stream:" -ForegroundColor Yellow
+                    $jobError | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Subscriptions job output (may contain error): ' + ($jobError | Out-String -Width 500))
+                } else {
+                    Write-Host "  [ERROR] Job output stream is null" -ForegroundColor Yellow
+                }
+                
+                if ($null -ne $jobErrorStream) {
+                    Write-Host "  [ERROR] Job error stream:" -ForegroundColor Yellow
+                    $jobErrorStream | ForEach-Object { Write-Host "    $_" -ForegroundColor Red }
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Subscriptions job error stream: ' + ($jobErrorStream | Out-String -Width 500))
+                } else {
+                    Write-Host "  [ERROR] Job error stream is null" -ForegroundColor Yellow
+                }
+                
+                # Get job details
+                $jobDetails = $SubscriptionsJob | Format-List * | Out-String
+                Write-Host "  [ERROR] Job details:" -ForegroundColor Yellow
+                Write-Host $jobDetails -ForegroundColor Gray
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Subscriptions job error details: ' + $jobDetails)
+                
+                # Check child jobs for more details
+                if ($SubscriptionsJob.ChildJobs) {
+                    Write-Host "  [ERROR] Checking child jobs..." -ForegroundColor Yellow
+                    foreach ($childJob in $SubscriptionsJob.ChildJobs) {
+                        Write-Host "    Child job state: $($childJob.State)" -ForegroundColor Yellow
+                        if ($childJob.Error) {
+                            Write-Host "    Child job errors:" -ForegroundColor Red
+                            foreach ($childError in $childJob.Error) {
+                                Write-Host "      $($childError.Exception.Message)" -ForegroundColor Red
+                            }
+                        }
+                        $childOutput = Receive-Job -Job $childJob -ErrorAction SilentlyContinue
+                        $childErrorStream = Receive-Job -Job $childJob -ErrorStream -ErrorAction SilentlyContinue
+                        if ($null -ne $childOutput) {
+                            Write-Host "    Child job output:" -ForegroundColor Yellow
+                            $childOutput | ForEach-Object { Write-Host "      $_" -ForegroundColor Gray }
+                        }
+                        if ($null -ne $childErrorStream) {
+                            Write-Host "    Child job error stream:" -ForegroundColor Red
+                            $childErrorStream | ForEach-Object { Write-Host "      $_" -ForegroundColor Red }
+                        }
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Child job state: ' + $childJob.State)
+                        if ($null -ne $childOutput) {
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Child job output: ' + ($childOutput | Out-String -Width 500))
+                        }
+                    }
+                } else {
+                    Write-Host "  [ERROR] No child jobs found" -ForegroundColor Yellow
+                }
+                
+                # Still try to get output in case there's partial data
+                $jobOutput = Receive-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
+                if ($null -ne $jobOutput -and $jobOutput.Count -gt 0) {
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Subscriptions job has partial output: ' + $jobOutput.Count + ' item(s)')
+                    # Try to filter and use it
+                    $dataObjects = $jobOutput | Where-Object { $_ -isnot [System.Management.Automation.DebugRecord] }
+                    $psCustomObjects = $dataObjects | Where-Object { $_ -is [PSCustomObject] }
+                    if ($psCustomObjects.Count -gt 0) {
+                        $script:AzSubs = $psCustomObjects
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Using partial data from failed job: ' + $psCustomObjects.Count + ' record(s)')
+                    } else {
+                        $script:AzSubs = @()
+                    }
+                } else {
+                    $script:AzSubs = @()
+                }
             } elseif ($SubscriptionsJob.State -eq 'Completed') {
                 # Get all output from the job (including debug messages)
                 $jobOutput = Receive-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
