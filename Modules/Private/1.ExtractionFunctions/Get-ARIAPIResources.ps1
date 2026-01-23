@@ -120,14 +120,34 @@ function Get-ARIAPIResources {
             }
             Start-Sleep -Milliseconds 200
 
-            if (!$SkipPolicy.isPresent)
+            # Handle SkipPolicy parameter - it might be a switch, boolean, or null
+            $shouldSkipPolicy = $false
+            if ($null -ne $SkipPolicy) {
+                if ($SkipPolicy -is [switch]) {
+                    $shouldSkipPolicy = $SkipPolicy.IsPresent
+                } else {
+                    # If it's not a switch, treat as boolean
+                    $shouldSkipPolicy = [bool]$SkipPolicy
+                }
+            }
+            
+            if (!$shouldSkipPolicy)
                 {
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Getting Policies')
                     #Policies
                     try {
                         $url = ('https://'+ $AzURL +'/subscriptions/'+$sub+'/providers/Microsoft.PolicyInsights/policyStates/latest/summarize?api-version=2019-10-01')
                         $PolicyAssign = (Invoke-RestMethod -Uri $url -Headers $header -Method POST).value
-                        $PolicyAssignCount = if ($null -ne $PolicyAssign -and $null -ne $PolicyAssign.policyAssignments) { 
+                        # Safely check if policyAssignments property exists before accessing
+                        $hasPolicyAssignments = $false
+                        if ($null -ne $PolicyAssign) {
+                            if ($PolicyAssign -is [PSCustomObject]) {
+                                $hasPolicyAssignments = $PolicyAssign.PSObject.Properties.Name -contains 'policyAssignments'
+                            } elseif ($PolicyAssign -is [System.Collections.Hashtable]) {
+                                $hasPolicyAssignments = $PolicyAssign.ContainsKey('policyAssignments')
+                            }
+                        }
+                        $PolicyAssignCount = if ($hasPolicyAssignments -and $null -ne $PolicyAssign.policyAssignments) { 
                             if ($PolicyAssign.policyAssignments -is [System.Array]) { $PolicyAssign.policyAssignments.Count } else { 1 }
                         } else { 0 }
                         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Collected ' + $PolicyAssignCount + ' policy assignment(s) for subscription ' + $sub)
