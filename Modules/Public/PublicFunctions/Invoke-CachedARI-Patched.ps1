@@ -850,192 +850,15 @@ Function Invoke-CachedARI-Patched {
                             if ($resourceHealthCount -gt 0) {
                                 Write-Host "[UseExistingCache] Added $resourceHealthCount Resource Health event(s) to Resources for Outages processing" -ForegroundColor Green
                                 
-                                # CRITICAL FIX: Process Resource Health events and save to separate Outages.json cache file
-                                # Outages.ps1 expects PROCESSED outage records when Task='Reporting', not raw Resource Health events
-                                # We need to process the raw events using the Outages.ps1 Processing logic
-                                try {
-                                    $outagesJsonPath = Join-Path $ReportCache "Outages.json"
-                                    
-                                    # Filter for outage events (same filter as Outages.ps1)
-                                    $outageEvents = $Resources | Where-Object { 
-                                        $_.TYPE -eq 'Microsoft.ResourceHealth/events' -and 
-                                        $null -ne $_.properties -and
-                                        $null -ne $_.properties.description -and
-                                        $_.properties.description -like '*How can customers make incidents like this less impactful?*' 
-                                    }
-                                    
-                                    if ($outageEvents.Count -gt 0) {
-                                        Write-Host "[UseExistingCache] Processing $($outageEvents.Count) Resource Health event(s) into outage records..." -ForegroundColor Gray
-                                        
-                                        # Process outages using same logic as Outages.ps1 Processing task
-                                        $processedOutages = @()
-                                        foreach ($outageEvent in $outageEvents) {
-                                            try {
-                                                # Safely extract impacted subscriptions
-                                                $ImpactedSubs = @()
-                                                if ($null -ne $outageEvent.properties -and $null -ne $outageEvent.properties.impact -and $null -ne $outageEvent.properties.impact.impactedRegions) {
-                                                    if ($null -ne $outageEvent.properties.impact.impactedRegions.impactedSubscriptions) {
-                                                        $ImpactedSubs = $outageEvent.properties.impact.impactedRegions.impactedSubscriptions | Select-Object -Unique
-                                                    }
-                                                }
-                                                # If no impacted subscriptions found, try to extract from outage ID
-                                                if ($ImpactedSubs.Count -eq 0) {
-                                                    if ($null -ne $outageEvent.id -and $outageEvent.id -match '/subscriptions/([^/]+)') {
-                                                        $ImpactedSubs = @($matches[1])
-                                                    }
-                                                }
-                                                
-                                                $Data = $outageEvent.properties
-                                                
-                                                foreach ($Sub0 in $ImpactedSubs) {
-                                                    $sub1 = $Subscriptions | Where-Object { $_.id -eq $Sub0 }
-                                                    $subName = if ($sub1) { $sub1.Name } else { $Sub0 }
-                                                    
-                                                    $StartTime = ''
-                                                    $Mitigation = ''
-                                                    if ($null -ne $Data.impactStartTime) {
-                                                        try {
-                                                            $StartTime = ([datetime]$Data.impactStartTime).ToString("yyyy-MM-dd HH:mm")
-                                                        } catch {
-                                                            $StartTime = $Data.impactStartTime
-                                                        }
-                                                    }
-                                                    if ($null -ne $Data.impactMitigationTime) {
-                                                        try {
-                                                            $Mitigation = ([datetime]$Data.impactMitigationTime).ToString("yyyy-MM-dd HH:mm")
-                                                        } catch {
-                                                            $Mitigation = $Data.impactMitigationTime
-                                                        }
-                                                    }
-                                                    
-                                                    # Safely handle impactedService
-                                                    $impactedServiceValue = $outageEvent.properties.impact.impactedService
-                                                    $ImpactedService = ''
-                                                    if ($null -ne $impactedServiceValue) {
-                                                        if ($impactedServiceValue -is [System.Array] -and $impactedServiceValue.Count -gt 1) {
-                                                            $ImpactedService = ($impactedServiceValue | ForEach-Object { $_ + ' ,' }) -join ''
-                                                            $ImpactedService = if ($ImpactedService -like '* ,*') { $ImpactedService -replace ".$" } else { $ImpactedService }
-                                                        } else {
-                                                            $ImpactedService = [string]$impactedServiceValue
-                                                        }
-                                                    }
-                                                    
-                                                    # Safely parse HTML description
-                                                    $whatHappened = ''
-                                                    $whatWentWrong = ''
-                                                    $howDidWeRespond = ''
-                                                    $howMakingLessLikely = ''
-                                                    $howCustomersCanMakeLessImpactful = ''
-                                                    
-                                                    if ($null -ne $outageEvent.properties.description) {
-                                                        try {
-                                                            $HTML = New-Object -Com 'HTMLFile'
-                                                            $HTML.write([ref]$outageEvent.properties.description)
-                                                            $OutageDescription = $Html.body.innerText
-                                                            $SplitDescription = $OutageDescription.split('How can we make our incident communications more useful?').split('How can customers make incidents like this less impactful?').split('How are we making incidents like this less likely or less impactful?').split('How did we respond?').split('What went wrong and why?').split('What happened?')
-                                                            
-                                                            $splitDescCount = if ($null -ne $SplitDescription -and $SplitDescription -is [System.Array]) { $SplitDescription.Count } elseif ($null -ne $SplitDescription) { 1 } else { 0 }
-                                                            
-                                                            if ($splitDescCount -gt 1 -and $null -ne $SplitDescription[1]) {
-                                                                $whatHappenedLines = $SplitDescription[1].Split([Environment]::NewLine)
-                                                                $whatHappenedLinesCount = if ($null -ne $whatHappenedLines -and $whatHappenedLines -is [System.Array]) { $whatHappenedLines.Count } elseif ($null -ne $whatHappenedLines) { 1 } else { 0 }
-                                                                if ($whatHappenedLinesCount -gt 1) { $whatHappened = $whatHappenedLines[1] }
-                                                            }
-                                                            if ($splitDescCount -gt 2 -and $null -ne $SplitDescription[2]) {
-                                                                $whatWentWrongLines = $SplitDescription[2].Split([Environment]::NewLine)
-                                                                $whatWentWrongLinesCount = if ($null -ne $whatWentWrongLines -and $whatWentWrongLines -is [System.Array]) { $whatWentWrongLines.Count } elseif ($null -ne $whatWentWrongLines) { 1 } else { 0 }
-                                                                if ($whatWentWrongLinesCount -gt 1) { $whatWentWrong = $whatWentWrongLines[1] }
-                                                            }
-                                                            if ($splitDescCount -gt 3 -and $null -ne $SplitDescription[3]) {
-                                                                $howDidWeRespondLines = $SplitDescription[3].Split([Environment]::NewLine)
-                                                                $howDidWeRespondLinesCount = if ($null -ne $howDidWeRespondLines -and $howDidWeRespondLines -is [System.Array]) { $howDidWeRespondLines.Count } elseif ($null -ne $howDidWeRespondLines) { 1 } else { 0 }
-                                                                if ($howDidWeRespondLinesCount -gt 1) { $howDidWeRespond = $howDidWeRespondLines[1] }
-                                                            }
-                                                            if ($splitDescCount -gt 4 -and $null -ne $SplitDescription[4]) {
-                                                                $howMakingLessLikelyLines = $SplitDescription[4].Split([Environment]::NewLine)
-                                                                $howMakingLessLikelyLinesCount = if ($null -ne $howMakingLessLikelyLines -and $howMakingLessLikelyLines -is [System.Array]) { $howMakingLessLikelyLines.Count } elseif ($null -ne $howMakingLessLikelyLines) { 1 } else { 0 }
-                                                                if ($howMakingLessLikelyLinesCount -gt 1) { $howMakingLessLikely = $howMakingLessLikelyLines[1] }
-                                                            }
-                                                            if ($splitDescCount -gt 5 -and $null -ne $SplitDescription[5]) {
-                                                                $howCustomersCanMakeLessImpactfulLines = $SplitDescription[5].Split([Environment]::NewLine)
-                                                                $howCustomersCanMakeLessImpactfulLinesCount = if ($null -ne $howCustomersCanMakeLessImpactfulLines -and $howCustomersCanMakeLessImpactfulLines -is [System.Array]) { $howCustomersCanMakeLessImpactfulLines.Count } elseif ($null -ne $howCustomersCanMakeLessImpactfulLines) { 1 } else { 0 }
-                                                                if ($howCustomersCanMakeLessImpactfulLinesCount -gt 1) { $howCustomersCanMakeLessImpactful = $howCustomersCanMakeLessImpactfulLines[1] }
-                                                            }
-                                                        } catch {
-                                                            # HTML parsing failed, skip description parsing
-                                                        }
-                                                    }
-                                                    
-                                                    $processedOutage = [PSCustomObject]@{
-                                                        'ID' = $outageEvent.id
-                                                        'Subscription' = $subName
-                                                        'Outage ID' = $outageEvent.name
-                                                        'Event Type' = if ($Data.eventType) { $Data.eventType } else { '' }
-                                                        'Status' = if ($Data.status) { $Data.status } else { '' }
-                                                        'Event Level' = if ($Data.eventlevel) { $Data.eventlevel } else { '' }
-                                                        'Title' = if ($Data.title) { $Data.title } else { '' }
-                                                        'Impact Start Time' = $StartTime
-                                                        'Impact Mitigation Time' = $Mitigation
-                                                        'Impacted Services' = $ImpactedService
-                                                        'What happened' = $whatHappened
-                                                        'What went wrong and why' = $whatWentWrong
-                                                        'How did we respond' = $howDidWeRespond
-                                                        'How are we making incidents like this less likely or less impactful' = $howMakingLessLikely
-                                                        'How can customers make incidents like this less impactful' = $howCustomersCanMakeLessImpactful
-                                                        'Resource U' = 1
-                                                    }
-                                                    $processedOutages += $processedOutage
-                                                }
-                                            } catch {
-                                                Write-Debug "[UseExistingCache] Error processing outage event $($outageEvent.name): $_"
-                                            }
-                                        }
-                                        
-                                        if ($processedOutages.Count -gt 0) {
-                                            # Load existing Outages.json if it exists (from merged batches)
-                                            $outagesData = @{}
-                                            if (Test-Path $outagesJsonPath) {
-                                                try {
-                                                    $existingContent = Get-Content $outagesJsonPath -Raw | ConvertFrom-Json
-                                                    if ($existingContent) {
-                                                        # Handle both direct array and object with Outages property
-                                                        if ($existingContent -is [System.Array]) {
-                                                            $outagesData = @{ Outages = $existingContent }
-                                                        } elseif ($existingContent.PSObject.Properties.Name -contains 'Outages') {
-                                                            $outagesData = $existingContent
-                                                        } else {
-                                                            $outagesData = @{ Outages = @($existingContent) }
-                                                        }
-                                                    }
-                                                } catch {
-                                                    Write-Debug "[UseExistingCache] Could not parse existing Outages.json, creating new one"
-                                                }
-                                            }
-                                            
-                                            # Merge with existing Outages data if it exists
-                                            if ($outagesData.PSObject.Properties.Name -contains 'Outages' -and $null -ne $outagesData.Outages) {
-                                                $existingOutages = $outagesData.Outages
-                                                if ($existingOutages -isnot [System.Array]) {
-                                                    $existingOutages = @($existingOutages)
-                                                }
-                                                # Merge: combine existing with new, remove duplicates by 'Outage ID'
-                                                $allOutages = $existingOutages + $processedOutages
-                                                $uniqueOutages = $allOutages | Sort-Object -Property 'Outage ID' -Unique
-                                                $outagesData.Outages = $uniqueOutages
-                                                Write-Host "[UseExistingCache] Merged $($processedOutages.Count) new processed outage record(s) with $($existingOutages.Count) existing record(s) = $($uniqueOutages.Count) total in Outages.json" -ForegroundColor Green
-                                            } else {
-                                                $outagesData = @{ Outages = $processedOutages }
-                                                Write-Host "[UseExistingCache] Saved $($processedOutages.Count) processed outage record(s) to Outages.json cache file" -ForegroundColor Green
-                                            }
-                                            
-                                            $outagesJsonContent = $outagesData | ConvertTo-Json -Depth 20
-                                            Set-Content -Path $outagesJsonPath -Value $outagesJsonContent -ErrorAction Stop
-                                        }
-                                    }
-                                } catch {
-                                    Write-Host "[UseExistingCache] Warning: Failed to process and save outages to Outages.json: $_" -ForegroundColor Yellow
-                                    Write-Host "[UseExistingCache] Error details: $($_.Exception.Message)" -ForegroundColor Yellow
+                                # Store Resource Health events in script-scoped variable for later Outages sheet generation
+                                # Filter for outage events (same filter as Outages.ps1)
+                                $script:ResourceHealthEventsForOutages = $Resources | Where-Object { 
+                                    $_.TYPE -eq 'Microsoft.ResourceHealth/events' -and 
+                                    $null -ne $_.properties -and
+                                    $null -ne $_.properties.description -and
+                                    $_.properties.description -like '*How can customers make incidents like this less impactful?*' 
                                 }
+                                Write-Host "[UseExistingCache] Stored $($script:ResourceHealthEventsForOutages.Count) outage event(s) for direct sheet generation" -ForegroundColor Green
                             }
                         }
                         
@@ -1357,6 +1180,194 @@ Function Invoke-CachedARI-Patched {
             $TotalRes = Start-ARIExcelCustomization -File $File -TableStyle $TableStyle -PlatOS $PlatOS -Subscriptions $Subscriptions -ExtractionRunTime $ExtractionRuntime -ProcessingRunTime $ProcessingRunTime -ReportingRunTime $ReportingRunTime -IncludeCosts $IncludeCosts -RunLite $RunLite -Overview $Overview
 
             Write-Progress -activity 'Azure Inventory' -Status "95% Complete." -PercentComplete 95 -CurrentOperation "Excel Customization Completed.."
+            
+            # Generate Outages sheet directly using working logic from outages-only script
+            # This bypasses Outages.ps1 module which has issues with cache data format
+            if ($null -ne $script:ResourceHealthEventsForOutages -and $script:ResourceHealthEventsForOutages.Count -gt 0) {
+                Write-Host "[UseExistingCache] Generating Outages sheet directly using working logic..." -ForegroundColor Cyan
+                try {
+                    # Ensure Subscriptions is available and is an array
+                    if ($null -eq $Subscriptions) {
+                        $Subscriptions = @()
+                    } elseif ($Subscriptions -isnot [System.Array]) {
+                        $Subscriptions = @($Subscriptions)
+                    }
+                    
+                    # Process outages using same logic as outages-only script
+                    $processedOutages = @()
+                    $SubObjects = @()
+                    foreach ($sub in $Subscriptions) {
+                        $SubObjects += [PSCustomObject]@{
+                            id = $sub.Id
+                            name = $sub.Name
+                        }
+                    }
+                    
+                    foreach ($outage in $script:ResourceHealthEventsForOutages) {
+                        try {
+                            # Safely extract impacted subscriptions
+                            $ImpactedSubs = @()
+                            if ($null -ne $outage.properties -and $null -ne $outage.properties.impact -and $null -ne $outage.properties.impact.impactedRegions) {
+                                if ($null -ne $outage.properties.impact.impactedRegions.impactedSubscriptions) {
+                                    $uniqueSubs = $outage.properties.impact.impactedRegions.impactedSubscriptions | Select-Object -Unique
+                                    if ($null -ne $uniqueSubs) {
+                                        if ($uniqueSubs -is [System.Array]) {
+                                            $ImpactedSubs = $uniqueSubs
+                                        } else {
+                                            $ImpactedSubs = @($uniqueSubs)
+                                        }
+                                    }
+                                }
+                            }
+                            # If no impacted subscriptions found, try to extract from outage ID
+                            $impactedSubsCount = if ($null -ne $ImpactedSubs -and $ImpactedSubs -is [System.Array]) { $ImpactedSubs.Count } elseif ($null -ne $ImpactedSubs) { 1 } else { 0 }
+                            if ($impactedSubsCount -eq 0) {
+                                if ($null -ne $outage.id -and $outage.id -match '/subscriptions/([^/]+)') {
+                                    $ImpactedSubs = @($matches[1])
+                                }
+                            }
+                            
+                            $ResUCount = 1
+                            $Data = $outage.properties
+                            
+                            foreach ($Sub0 in $ImpactedSubs) {
+                                $sub1 = $SubObjects | Where-Object { $_.id -eq $Sub0 }
+                                if ($sub1) {
+                                    $StartTime = $Data.impactStartTime
+                                    $StartTime = [datetime]$StartTime
+                                    $StartTime = $StartTime.ToString("yyyy-MM-dd HH:mm")
+                                    
+                                    $Mitigation = $Data.impactMitigationTime
+                                    $Mitigation = [datetime]$Mitigation
+                                    $Mitigation = $Mitigation.ToString("yyyy-MM-dd HH:mm")
+                                    
+                                    # Safely handle impactedService
+                                    $impactedServiceValue = $outage.properties.impact.impactedService
+                                    if ($null -ne $impactedServiceValue) {
+                                        if ($impactedServiceValue -is [System.Array] -and $impactedServiceValue.Count -gt 1) {
+                                            $ImpactedService = $impactedServiceValue | ForEach-Object { $_ + ' ,' }
+                                        } else {
+                                            $ImpactedService = $impactedServiceValue
+                                        }
+                                    } else {
+                                        $ImpactedService = ''
+                                    }
+                                    $ImpactedService = [string]$ImpactedService
+                                    $ImpactedService = if ($ImpactedService -like '* ,*') { $ImpactedService -replace ".$" } else { $ImpactedService }
+                                    
+                                    # Safely parse HTML description
+                                    $OutageDescription = ''
+                                    $SplitDescription = @('', '', '', '', '', '', '')
+                                    try {
+                                        $HTML = New-Object -Com 'HTMLFile'
+                                        $HTML.write([ref]$outage.properties.description)
+                                        $OutageDescription = $Html.body.innerText
+                                        $SplitDescription = $OutageDescription.split('How can we make our incident communications more useful?').split('How can customers make incidents like this less impactful?').split('How are we making incidents like this less likely or less impactful?').split('How did we respond?').split('What went wrong and why?').split('What happened?')
+                                    } catch {
+                                        $OutageDescription = $outage.properties.description
+                                        $SplitDescription = @('', $OutageDescription, '', '', '', '', '')
+                                    }
+                                    
+                                    # Safely extract split description sections
+                                    $whatHappened = ''
+                                    $whatWentWrong = ''
+                                    $howDidWeRespond = ''
+                                    $howMakingLessLikely = ''
+                                    $howCustomersCanMakeLessImpactful = ''
+                                    
+                                    $splitDescCount = if ($null -ne $SplitDescription -and $SplitDescription -is [System.Array]) { $SplitDescription.Count } elseif ($null -ne $SplitDescription) { 1 } else { 0 }
+                                    
+                                    if ($splitDescCount -gt 1 -and $null -ne $SplitDescription[1]) {
+                                        $whatHappenedLines = $SplitDescription[1].Split([Environment]::NewLine)
+                                        $whatHappenedLinesCount = if ($null -ne $whatHappenedLines -and $whatHappenedLines -is [System.Array]) { $whatHappenedLines.Count } elseif ($null -ne $whatHappenedLines) { 1 } else { 0 }
+                                        if ($whatHappenedLinesCount -gt 1) { $whatHappened = $whatHappenedLines[1] }
+                                    }
+                                    if ($splitDescCount -gt 2 -and $null -ne $SplitDescription[2]) {
+                                        $whatWentWrongLines = $SplitDescription[2].Split([Environment]::NewLine)
+                                        $whatWentWrongLinesCount = if ($null -ne $whatWentWrongLines -and $whatWentWrongLines -is [System.Array]) { $whatWentWrongLines.Count } elseif ($null -ne $whatWentWrongLines) { 1 } else { 0 }
+                                        if ($whatWentWrongLinesCount -gt 1) { $whatWentWrong = $whatWentWrongLines[1] }
+                                    }
+                                    if ($splitDescCount -gt 3 -and $null -ne $SplitDescription[3]) {
+                                        $howDidWeRespondLines = $SplitDescription[3].Split([Environment]::NewLine)
+                                        $howDidWeRespondLinesCount = if ($null -ne $howDidWeRespondLines -and $howDidWeRespondLines -is [System.Array]) { $howDidWeRespondLines.Count } elseif ($null -ne $howDidWeRespondLines) { 1 } else { 0 }
+                                        if ($howDidWeRespondLinesCount -gt 1) { $howDidWeRespond = $howDidWeRespondLines[1] }
+                                    }
+                                    if ($splitDescCount -gt 4 -and $null -ne $SplitDescription[4]) {
+                                        $howMakingLessLikelyLines = $SplitDescription[4].Split([Environment]::NewLine)
+                                        $howMakingLessLikelyLinesCount = if ($null -ne $howMakingLessLikelyLines -and $howMakingLessLikelyLines -is [System.Array]) { $howMakingLessLikelyLines.Count } elseif ($null -ne $howMakingLessLikelyLines) { 1 } else { 0 }
+                                        if ($howMakingLessLikelyLinesCount -gt 1) { $howMakingLessLikely = $howMakingLessLikelyLines[1] }
+                                    }
+                                    if ($splitDescCount -gt 5 -and $null -ne $SplitDescription[5]) {
+                                        $howCustomersCanMakeLessImpactfulLines = $SplitDescription[5].Split([Environment]::NewLine)
+                                        $howCustomersCanMakeLessImpactfulLinesCount = if ($null -ne $howCustomersCanMakeLessImpactfulLines -and $howCustomersCanMakeLessImpactfulLines -is [System.Array]) { $howCustomersCanMakeLessImpactfulLines.Count } elseif ($null -ne $howCustomersCanMakeLessImpactfulLines) { 1 } else { 0 }
+                                        if ($howCustomersCanMakeLessImpactfulLinesCount -gt 1) { $howCustomersCanMakeLessImpactful = $howCustomersCanMakeLessImpactfulLines[1] }
+                                    }
+                                    
+                                    $obj = [PSCustomObject]@{
+                                        'Subscription' = $sub1.name
+                                        'Outage ID' = $outage.name
+                                        'Event Type' = $Data.eventType
+                                        'Status' = $Data.status
+                                        'Event Level' = $Data.eventlevel
+                                        'Title' = $Data.title
+                                        'Impact Start Time' = $StartTime
+                                        'Impact Mitigation Time' = $Mitigation
+                                        'Impacted Services' = $ImpactedService
+                                        'What happened' = $whatHappened
+                                        'What went wrong and why' = $whatWentWrong
+                                        'How did we respond' = $howDidWeRespond
+                                        'How are we making incidents like this less likely or less impactful' = $howMakingLessLikely
+                                        'How can customers make incidents like this less impactful' = $howCustomersCanMakeLessImpactful
+                                        'Resource U' = $ResUCount
+                                    }
+                                    $processedOutages += $obj
+                                    if ($ResUCount -eq 1) { $ResUCount = 0 }
+                                }
+                            }
+                        } catch {
+                            Write-Debug "[UseExistingCache] Error processing outage $($outage.name): $_"
+                        }
+                    }
+                    
+                    if ($processedOutages.Count -gt 0) {
+                        # Generate Outages sheet
+                        $ResourceUSum = ($processedOutages | Measure-Object -Property 'Resource U' -Sum).Sum
+                        $TableName = ('OutageTab_'+$ResourceUSum)
+                        
+                        $Style = @(
+                            New-ExcelStyle -HorizontalAlignment Center -AutoSize -NumberFormat '0' -Range 'A:E'
+                            New-ExcelStyle -HorizontalAlignment Left -NumberFormat '0' -WrapText -Width 55 -Range 'F:F'
+                            New-ExcelStyle -HorizontalAlignment Center -AutoSize -NumberFormat '0' -Range 'G:I'
+                            New-ExcelStyle -HorizontalAlignment Left -NumberFormat '0' -WrapText -Width 80 -Range 'J:N'
+                        )
+                        
+                        $Exc = New-Object System.Collections.Generic.List[System.Object]
+                        $Exc.Add('Subscription')
+                        $Exc.Add('Outage ID')
+                        $Exc.Add('Event Type')
+                        $Exc.Add('Status')
+                        $Exc.Add('Event Level')
+                        $Exc.Add('Title')
+                        $Exc.Add('Impact Start Time')
+                        $Exc.Add('Impact Mitigation Time')
+                        $Exc.Add('Impacted Services')
+                        $Exc.Add('What happened')
+                        $Exc.Add('What went wrong and why')
+                        $Exc.Add('How did we respond')
+                        $Exc.Add('How are we making incidents like this less likely or less impactful')
+                        $Exc.Add('How can customers make incidents like this less impactful')
+                        
+                        $processedOutages | Select-Object $Exc | Export-Excel -Path $File -WorksheetName 'Outages' -AutoSize -TableName $TableName -MaxAutoSizeRows 100 -TableStyle $TableStyle -Numberformat '0' -Style $Style
+                        
+                        Write-Host "[UseExistingCache] ✓ Generated Outages sheet with $($processedOutages.Count) outage record(s)" -ForegroundColor Green
+                    } else {
+                        Write-Host "[UseExistingCache] ⚠ No processed outages to generate sheet" -ForegroundColor Yellow
+                    }
+                } catch {
+                    Write-Host "[UseExistingCache] ⚠ Error generating Outages sheet: $_" -ForegroundColor Yellow
+                    Write-Host "[UseExistingCache] Error details: $($_.Exception.Message)" -ForegroundColor Yellow
+                }
+            }
 
         $ReportingRunTime.Stop()
 
