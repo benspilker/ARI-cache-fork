@@ -1168,22 +1168,11 @@ Function Invoke-CachedARI-Patched {
             throw
         }
 
-        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Generating Overview sheet (Charts).')
-
-        # Ensure Subscriptions is initialized and is an array before passing to Start-ARIExcelCustomization
-        if ($null -eq $Subscriptions) {
-            $Subscriptions = @()
-        } elseif ($Subscriptions -isnot [System.Array]) {
-            $Subscriptions = @($Subscriptions)
-        }
-
-            $TotalRes = Start-ARIExcelCustomization -File $File -TableStyle $TableStyle -PlatOS $PlatOS -Subscriptions $Subscriptions -ExtractionRunTime $ExtractionRuntime -ProcessingRunTime $ProcessingRunTime -ReportingRunTime $ReportingRunTime -IncludeCosts $IncludeCosts -RunLite $RunLite -Overview $Overview
-
-            Write-Progress -activity 'Azure Inventory' -Status "95% Complete." -PercentComplete 95 -CurrentOperation "Excel Customization Completed.."
-            
-            # Generate Outages sheet directly using working logic from outages-only script
-            # This bypasses Outages.ps1 module which has issues with cache data format
-            if ($null -ne $script:ResourceHealthEventsForOutages -and $script:ResourceHealthEventsForOutages.Count -gt 0) {
+        # Generate Outages sheet BEFORE Overview sheet to avoid breaking pivot tables
+        # This bypasses Outages.ps1 module which has issues with cache data format
+        # CRITICAL: Must be generated BEFORE Start-ARIExcelCustomization (Overview sheet)
+        # because Overview sheet creates pivot tables that reference all data sheets
+        if ($null -ne $script:ResourceHealthEventsForOutages -and $script:ResourceHealthEventsForOutages.Count -gt 0) {
                 Write-Host "[UseExistingCache] Generating Outages sheet directly using working logic..." -ForegroundColor Cyan
                 try {
                     # Ensure Subscriptions is available and is an array
@@ -1368,6 +1357,19 @@ Function Invoke-CachedARI-Patched {
                     Write-Host "[UseExistingCache] Error details: $($_.Exception.Message)" -ForegroundColor Yellow
                 }
             }
+
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Generating Overview sheet (Charts).')
+
+        # Ensure Subscriptions is initialized and is an array before passing to Start-ARIExcelCustomization
+        if ($null -eq $Subscriptions) {
+            $Subscriptions = @()
+        } elseif ($Subscriptions -isnot [System.Array]) {
+            $Subscriptions = @($Subscriptions)
+        }
+
+            $TotalRes = Start-ARIExcelCustomization -File $File -TableStyle $TableStyle -PlatOS $PlatOS -Subscriptions $Subscriptions -ExtractionRunTime $ExtractionRuntime -ProcessingRunTime $ProcessingRunTime -ReportingRunTime $ReportingRunTime -IncludeCosts $IncludeCosts -RunLite $RunLite -Overview $Overview
+
+            Write-Progress -activity 'Azure Inventory' -Status "95% Complete." -PercentComplete 95 -CurrentOperation "Excel Customization Completed.."
 
         $ReportingRunTime.Stop()
 
