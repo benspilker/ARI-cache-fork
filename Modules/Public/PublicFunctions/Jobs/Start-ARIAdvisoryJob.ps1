@@ -98,13 +98,13 @@ function Start-ARIAdvisoryJob {
                         'Category'               = $data.category;
                         'Impact'                 = $data.impact;
                         'Description'            = if ($null -ne $data.shortDescription) { $data.shortDescription.problem } else { '' };
-                        'SKU'                    = if ($null -ne $data.extendedProperties) { $data.extendedProperties.sku } else { '' };
-                        'Term'                   = if ($null -ne $data.extendedProperties) { $data.extendedProperties.term } else { '' };
-                        'Look-back Period'       = if ($null -ne $data.extendedProperties) { $data.extendedProperties.lookbackPeriod } else { '' };
-                        'Quantity'               = if ($null -ne $data.extendedProperties) { $data.extendedProperties.qty } else { '' };
+                        'SKU'                    = if ($null -ne $data.extendedProperties -and $null -ne $data.extendedProperties.sku) { $data.extendedProperties.sku } else { '' };
+                        'Term'                   = if ($null -ne $data.extendedProperties -and $null -ne $data.extendedProperties.term) { $data.extendedProperties.term } else { '' };
+                        'Look-back Period'       = if ($null -ne $data.extendedProperties -and $null -ne $data.extendedProperties.lookbackPeriod) { $data.extendedProperties.lookbackPeriod } else { '' };
+                        'Quantity'               = if ($null -ne $data.extendedProperties -and $null -ne $data.extendedProperties.qty) { $data.extendedProperties.qty } else { '' };
                         'Savings Currency'       = $SavingsCurrency;
                         'Annual Savings'         = "=$Savings";
-                        'Savings Region'         = if ($null -ne $data.extendedProperties) { $data.extendedProperties.region } else { '' }
+                        'Savings Region'         = if ($null -ne $data.extendedProperties -and $null -ne $data.extendedProperties.region) { $data.extendedProperties.region } else { '' }
                     }
                     $obj
                 }
@@ -139,13 +139,13 @@ function Start-ARIAdvisoryJob {
                         'Category'               = if ($null -ne $data.category) { $data.category } else { '' };
                         'Impact'                 = if ($null -ne $data.impact) { $data.impact } else { '' };
                         'Description'            = if ($null -ne $data.shortDescription) { $data.shortDescription.problem } else { '' };
-                        'SKU'                    = if ($null -ne $data.extendedProperties) { $data.extendedProperties.sku } else { '' };
-                        'Term'                   = if ($null -ne $data.extendedProperties) { $data.extendedProperties.term } else { '' };
-                        'Look-back Period'       = if ($null -ne $data.extendedProperties) { $data.extendedProperties.lookbackPeriod } else { '' };
-                        'Quantity'               = if ($null -ne $data.extendedProperties) { $data.extendedProperties.qty } else { '' };
+                        'SKU'                    = if ($null -ne $data.extendedProperties -and $null -ne $data.extendedProperties.sku) { $data.extendedProperties.sku } else { '' };
+                        'Term'                   = if ($null -ne $data.extendedProperties -and $null -ne $data.extendedProperties.term) { $data.extendedProperties.term } else { '' };
+                        'Look-back Period'       = if ($null -ne $data.extendedProperties -and $null -ne $data.extendedProperties.lookbackPeriod) { $data.extendedProperties.lookbackPeriod } else { '' };
+                        'Quantity'               = if ($null -ne $data.extendedProperties -and $null -ne $data.extendedProperties.qty) { $data.extendedProperties.qty } else { '' };
                         'Savings Currency'       = $SavingsCurrency;
                         'Annual Savings'         = "=$Savings";
-                        'Savings Region'         = if ($null -ne $data.extendedProperties) { $data.extendedProperties.region } else { '' }
+                        'Savings Region'         = if ($null -ne $data.extendedProperties -and $null -ne $data.extendedProperties.region) { $data.extendedProperties.region } else { '' }
                     }
                     $obj
                 }
