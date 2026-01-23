@@ -567,9 +567,22 @@ function Start-ARIExtraReports {
     # If still empty, log a warning
     if ($AzSubs.Count -eq 0) {
         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Warning: No Subscriptions data available (Count=0) - Subscriptions sheet will be empty or skipped')
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'No subscription data to report - skipping Subscriptions sheet')
+    } else {
+        try {
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Calling Build-ARISubsReport with ' + $AzSubs.Count + ' subscription record(s)')
+            Build-ARISubsReport -File $File -Sub $AzSubs -IncludeCosts $IncludeCosts -TableStyle $TableStyle
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Build-ARISubsReport completed successfully')
+        } catch {
+            $errorMsg = $_.Exception.Message
+            $errorLine = if ($null -ne $_.InvocationInfo) { $_.InvocationInfo.ScriptLineNumber } else { "Unknown" }
+            $errorFunc = if ($null -ne $_.InvocationInfo -and $null -ne $_.InvocationInfo.FunctionName) { $_.InvocationInfo.FunctionName } else { "Unknown" }
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error in Build-ARISubsReport: ' + $errorMsg)
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error at line: ' + $errorLine + ', Function: ' + $errorFunc)
+            Write-Host "  [ERROR] Failed to generate Subscriptions sheet: $errorMsg" -ForegroundColor Red
+            # Don't throw - continue with other sheets
+        }
     }
-
-    Build-ARISubsReport -File $File -Sub $AzSubs -IncludeCosts $IncludeCosts -TableStyle $TableStyle
 
     Clear-ARIMemory
 
