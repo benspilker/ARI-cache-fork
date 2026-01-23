@@ -850,47 +850,58 @@ Function Invoke-CachedARI-Patched {
                             if ($resourceHealthCount -gt 0) {
                                 Write-Host "[UseExistingCache] Added $resourceHealthCount Resource Health event(s) to Resources for Outages processing" -ForegroundColor Green
                                 
-                                # CRITICAL FIX: Save Resource Health events to APIs.json cache file
-                                # Start-ARIExcelJob reads from cache files, not from $Resources array
-                                # Outages.ps1 expects $Resources parameter, but Start-ARIExcelJob passes $null
-                                # Solution: Save Resource Health events to APIs.json so Start-ARIExcelJob can find them
+                                # CRITICAL FIX: Save Resource Health events to separate Outages.json cache file
+                                # This avoids merge conflicts with APIs.json and ensures clean separation
+                                # Start-ARIExcelJob will look for Outages.json when processing Outages.ps1 module
                                 try {
-                                    $apisJsonPath = Join-Path $ReportCache "APIs.json"
-                                    $apisData = @{}
-                                    
-                                    # Load existing APIs.json if it exists
-                                    if (Test-Path $apisJsonPath) {
-                                        try {
-                                            $existingContent = Get-Content $apisJsonPath -Raw | ConvertFrom-Json
-                                            if ($existingContent) {
-                                                $apisData = $existingContent
-                                            }
-                                        } catch {
-                                            Write-Debug "[UseExistingCache] Could not parse existing APIs.json, creating new one"
-                                        }
-                                    }
-                                    
-                                    # Add Resource Health events to APIs.json under "Outages" key
-                                    # Start-ARIExcelJob looks for cache file matching folder name (APIs folder -> APIs.json)
-                                    # Then looks for property matching module name (Outages.ps1 -> "Outages" property)
-                                    # Outages.ps1 receives this as $SmaResources when Task='Reporting'
+                                    $outagesJsonPath = Join-Path $ReportCache "Outages.json"
                                     $resourceHealthArray = @()
                                     foreach ($event in $Resources | Where-Object { $_.TYPE -eq 'Microsoft.ResourceHealth/events' }) {
                                         $resourceHealthArray += $event
                                     }
                                     
                                     if ($resourceHealthArray.Count -gt 0) {
-                                        # Ensure apisData is a hashtable/PSCustomObject
-                                        if ($apisData -isnot [hashtable] -and $apisData -isnot [PSCustomObject]) {
-                                            $apisData = @{}
+                                        # Load existing Outages.json if it exists (from merged batches)
+                                        $outagesData = @{}
+                                        if (Test-Path $outagesJsonPath) {
+                                            try {
+                                                $existingContent = Get-Content $outagesJsonPath -Raw | ConvertFrom-Json
+                                                if ($existingContent) {
+                                                    # Handle both direct array and object with Outages property
+                                                    if ($existingContent -is [System.Array]) {
+                                                        $outagesData = @{ Outages = $existingContent }
+                                                    } elseif ($existingContent.PSObject.Properties.Name -contains 'Outages') {
+                                                        $outagesData = $existingContent
+                                                    } else {
+                                                        $outagesData = @{ Outages = @($existingContent) }
+                                                    }
+                                                }
+                                            } catch {
+                                                Write-Debug "[UseExistingCache] Could not parse existing Outages.json, creating new one"
+                                            }
                                         }
-                                        $apisData.Outages = $resourceHealthArray
-                                        $apisJsonContent = $apisData | ConvertTo-Json -Depth 20
-                                        Set-Content -Path $apisJsonPath -Value $apisJsonContent -ErrorAction Stop
-                                        Write-Host "[UseExistingCache] Saved $($resourceHealthArray.Count) Resource Health event(s) to APIs.json cache file (key: Outages)" -ForegroundColor Green
+                                        
+                                        # Merge with existing Outages data if it exists
+                                        if ($outagesData.PSObject.Properties.Name -contains 'Outages' -and $null -ne $outagesData.Outages) {
+                                            $existingOutages = $outagesData.Outages
+                                            if ($existingOutages -isnot [System.Array]) {
+                                                $existingOutages = @($existingOutages)
+                                            }
+                                            # Merge: combine existing with new, remove duplicates by id
+                                            $allOutages = $existingOutages + $resourceHealthArray
+                                            $uniqueOutages = $allOutages | Sort-Object -Property { if ($_.id) { $_.id } else { $_.name } } -Unique
+                                            $outagesData.Outages = $uniqueOutages
+                                            Write-Host "[UseExistingCache] Merged $($resourceHealthArray.Count) new Resource Health event(s) with $($existingOutages.Count) existing event(s) = $($uniqueOutages.Count) total in Outages.json" -ForegroundColor Green
+                                        } else {
+                                            $outagesData = @{ Outages = $resourceHealthArray }
+                                            Write-Host "[UseExistingCache] Saved $($resourceHealthArray.Count) Resource Health event(s) to Outages.json cache file" -ForegroundColor Green
+                                        }
+                                        
+                                        $outagesJsonContent = $outagesData | ConvertTo-Json -Depth 20
+                                        Set-Content -Path $outagesJsonPath -Value $outagesJsonContent -ErrorAction Stop
                                     }
                                 } catch {
-                                    Write-Host "[UseExistingCache] Warning: Failed to save Resource Health events to APIs.json: $_" -ForegroundColor Yellow
+                                    Write-Host "[UseExistingCache] Warning: Failed to save Resource Health events to Outages.json: $_" -ForegroundColor Yellow
                                 }
                             }
                         }

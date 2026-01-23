@@ -67,6 +67,15 @@ function Start-ARIExcelJob {
             
             $JSONFileName = ($ModuleFolder.Name + '.json')
             $CacheFile = $CacheFiles | Where-Object { $_.Name -like "*$JSONFileName" }
+            
+            # SPECIAL CASE: Outages module can use standalone Outages.json file
+            # This allows clean separation from APIs.json and avoids merge conflicts
+            if ($ModuleFolder.Name -eq 'APIs') {
+                $outagesStandaloneFile = $CacheFiles | Where-Object { $_.Name -eq 'Outages.json' }
+                if ($outagesStandaloneFile) {
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+"[Outages] Found standalone Outages.json file")
+                }
+            }
 
             if ($CacheFile)
                 {
@@ -89,9 +98,75 @@ function Start-ARIExcelJob {
 
                     # Safely access cache data - check if CacheData exists and has the ModName property
                     $SmaResources = $null
-                    if ($null -ne $CacheData) {
+                    
+                    # SPECIAL CASE: Outages module can use standalone Outages.json file
+                    if ($ModName -eq 'Outages') {
+                        $outagesStandaloneFile = $CacheFiles | Where-Object { $_.Name -eq 'Outages.json' }
+                        if ($outagesStandaloneFile) {
+                            try {
+                                $outagesFileContent = New-Object System.IO.StreamReader($outagesStandaloneFile.FullName)
+                                $outagesFileData = $outagesFileContent.ReadToEnd()
+                                $outagesFileContent.Dispose()
+                                $outagesFileData = $outagesFileData | ConvertFrom-Json
+                                
+                                # Handle both direct array and object with Outages property
+                                if ($outagesFileData -is [System.Array]) {
+                                    $SmaResources = $outagesFileData
+                                } elseif ($outagesFileData.PSObject.Properties.Name -contains 'Outages') {
+                                    $SmaResources = $outagesFileData.Outages
+                                } else {
+                                    $SmaResources = @($outagesFileData)
+                                }
+                                
+                                $outagesCount = 0
+                                if ($null -ne $SmaResources) {
+                                    if ($SmaResources -is [System.Array]) {
+                                        $outagesCount = $SmaResources.Count
+                                    } elseif ($null -ne $SmaResources) {
+                                        $outagesCount = 1
+                                    }
+                                }
+                                Write-Host "[Outages] Found $outagesCount outage(s) in standalone Outages.json file" -ForegroundColor Green
+                            } catch {
+                                Write-Host "[Outages] WARNING: Failed to read standalone Outages.json: $_" -ForegroundColor Yellow
+                            }
+                        }
+                    }
+                    
+                    # Fallback to standard cache file lookup if Outages.json not found or for other modules
+                    if ($null -eq $SmaResources -and $null -ne $CacheData) {
                         if ($CacheData.PSObject.Properties.Name -contains $ModName) {
                             $SmaResources = $CacheData.$ModName
+                            # Debug logging for Outages module
+                            if ($ModName -eq 'Outages') {
+                                $outagesCount = 0
+                                if ($null -ne $SmaResources) {
+                                    if ($SmaResources -is [System.Array]) {
+                                        $outagesCount = $SmaResources.Count
+                                    } elseif ($null -ne $SmaResources) {
+                                        $outagesCount = 1
+                                    }
+                                }
+                                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+"[Outages] Found $outagesCount outage(s) in cache file $JSONFileName")
+                                if ($outagesCount -eq 0) {
+                                    Write-Host "[Outages] WARNING: Cache file $JSONFileName has Outages key but contains no data" -ForegroundColor Yellow
+                                    Write-Host "[Outages] CacheData properties: $($CacheData.PSObject.Properties.Name -join ', ')" -ForegroundColor Gray
+                                }
+                            }
+                        } else {
+                            # Debug logging for missing module data
+                            if ($ModName -eq 'Outages') {
+                                Write-Host "[Outages] WARNING: Cache file $JSONFileName does not contain '$ModName' property" -ForegroundColor Yellow
+                                if ($null -ne $CacheData) {
+                                    Write-Host "[Outages] Available properties: $($CacheData.PSObject.Properties.Name -join ', ')" -ForegroundColor Gray
+                                } else {
+                                    Write-Host "[Outages] CacheData is null" -ForegroundColor Gray
+                                }
+                            }
+                        }
+                    } else {
+                        if ($ModName -eq 'Outages' -and $null -eq $SmaResources) {
+                            Write-Host "[Outages] WARNING: Cache file $JSONFileName not found or could not be parsed, and standalone Outages.json not found" -ForegroundColor Yellow
                         }
                     }
 
