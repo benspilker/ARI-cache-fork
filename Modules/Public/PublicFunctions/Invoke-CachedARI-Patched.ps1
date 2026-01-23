@@ -798,9 +798,100 @@ Function Invoke-CachedARI-Patched {
                         # Create a switch parameter for SkipPolicy (Get-ARIAPIResources expects a switch)
                         $skipPolicySwitch = [switch]$false
                         $APIResults = Get-ARIAPIResources -Subscriptions $Subscriptions -AzureEnvironment $AzureEnvironment -SkipPolicy:$skipPolicySwitch
-                        $PolicyAssign = $APIResults.PolicyAssign
-                        $PolicyDef = $APIResults.PolicyDef
-                        $PolicySetDef = $APIResults.PolicySetDef
+                        
+                        # Collect Resource Health events (needed for Outages sheet)
+                        # Resource Health events are collected via Get-ARIAPIResources but not added to Resources when using cache
+                        # Get-ARIAPIResources returns an array of hashtables, each with ResourceHealth.value
+                        $resourceHealthCount = 0
+                        if ($null -ne $APIResults) {
+                            if ($APIResults -isnot [System.Array]) {
+                                $APIResults = @($APIResults)
+                            }
+                            foreach ($apiResult in $APIResults) {
+                                if ($null -ne $apiResult -and $null -ne $apiResult.ResourceHealth) {
+                                    $resourceHealthEvents = $apiResult.ResourceHealth
+                                    if ($null -ne $resourceHealthEvents) {
+                                        # ResourceHealth is typically an array from API response
+                                        if ($resourceHealthEvents -isnot [System.Array]) {
+                                            $resourceHealthEvents = @($resourceHealthEvents)
+                                        }
+                                        # Add Resource Health events to Resources array so Outages module can process them
+                                        foreach ($event in $resourceHealthEvents) {
+                                            if ($null -ne $event) {
+                                                # Ensure event has TYPE property set correctly for Outages module filtering
+                                                # Outages.ps1 filters: TYPE -eq 'Microsoft.ResourceHealth/events'
+                                                if ($event -is [PSCustomObject]) {
+                                                    # Add TYPE property if it doesn't exist
+                                                    if (-not ($event.PSObject.Properties.Name -contains 'TYPE')) {
+                                                        $event | Add-Member -MemberType NoteProperty -Name 'TYPE' -Value 'Microsoft.ResourceHealth/events' -Force
+                                                    }
+                                                } elseif ($event -is [hashtable]) {
+                                                    # Convert hashtable to PSCustomObject with TYPE
+                                                    $event = [PSCustomObject]@{
+                                                        TYPE = 'Microsoft.ResourceHealth/events'
+                                                        properties = $event.properties
+                                                        name = $event.name
+                                                        id = $event.id
+                                                    }
+                                                } else {
+                                                    # Wrap in PSCustomObject
+                                                    $event = [PSCustomObject]@{
+                                                        TYPE = 'Microsoft.ResourceHealth/events'
+                                                        properties = $event
+                                                    }
+                                                }
+                                                $Resources += $event
+                                                $resourceHealthCount++
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            if ($resourceHealthCount -gt 0) {
+                                Write-Host "[UseExistingCache] Added $resourceHealthCount Resource Health event(s) to Resources for Outages processing" -ForegroundColor Green
+                            }
+                        }
+                        
+                        # Extract Policy data from APIResults
+                        # Get-ARIAPIResources returns array of hashtables
+                        # In normal flow, Start-ARIExtractionOrchestration does: $Resources += $APIResults.ResourceHealth
+                        # This works because PowerShell automatically expands array properties
+                        # But we need to handle it explicitly here
+                        $allPolicyAssign = @()
+                        $allPolicyDef = @()
+                        $allPolicySetDef = @()
+                        if ($null -ne $APIResults) {
+                            if ($APIResults -isnot [System.Array]) {
+                                $APIResults = @($APIResults)
+                            }
+                            foreach ($apiResult in $APIResults) {
+                                if ($null -ne $apiResult.PolicyAssign) {
+                                    if ($apiResult.PolicyAssign -is [System.Array]) {
+                                        $allPolicyAssign += $apiResult.PolicyAssign
+                                    } else {
+                                        $allPolicyAssign += $apiResult.PolicyAssign
+                                    }
+                                }
+                                if ($null -ne $apiResult.PolicyDef) {
+                                    if ($apiResult.PolicyDef -is [System.Array]) {
+                                        $allPolicyDef += $apiResult.PolicyDef
+                                    } else {
+                                        $allPolicyDef += $apiResult.PolicyDef
+                                    }
+                                }
+                                if ($null -ne $apiResult.PolicySetDef) {
+                                    if ($apiResult.PolicySetDef -is [System.Array]) {
+                                        $allPolicySetDef += $apiResult.PolicySetDef
+                                    } else {
+                                        $allPolicySetDef += $apiResult.PolicySetDef
+                                    }
+                                }
+                            }
+                        }
+                        # Set Policy variables (keep existing structure for compatibility)
+                        $PolicyAssign = $allPolicyAssign
+                        $PolicyDef = $allPolicyDef
+                        $PolicySetDef = $allPolicySetDef
                         # Safely access Count property - handle null/empty cases
                         if ($null -ne $PolicyAssign) {
                             if ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
