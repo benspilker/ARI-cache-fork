@@ -21,21 +21,11 @@ function Start-ARIExcelOrdening {
     Param($File)
 
     $Excel = Open-ExcelPackage -Path $File
-    # Safely access Worksheets - ensure it's always an array
-    $Worksheets = if ($null -ne $Excel -and $null -ne $Excel.Workbook -and $null -ne $Excel.Workbook.Worksheets) { 
-        $Excel.Workbook.Worksheets 
-    } else { 
-        @() 
-    }
-    # Ensure Worksheets is an array
-    if ($null -eq $Worksheets) {
-        $Worksheets = @()
-    } elseif ($Worksheets -isnot [System.Array]) {
-        $Worksheets = @($Worksheets)
-    }
+    # Get the Worksheets collection directly from EPPlus
+    $WorksheetsCollection = $Excel.Workbook.Worksheets
 
     # Safely filter worksheets - ensure Name property exists
-    $Order = $Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -notin 'Overview','Policy', 'Advisor', 'Security Center', 'Subscriptions', 'Quota Usage', 'AdvisorScore', 'Outages', 'Support Tickets', 'Reservation Advisor' } | Select-Object -Property Index, name, @{N = "Dimension"; E = { if ($null -ne $_.dimension) { $_.dimension.Rows - 1 } else { 0 } } } | Sort-Object -Property Dimension -Descending
+    $Order = $WorksheetsCollection | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -notin 'Overview','Policy', 'Advisor', 'Security Center', 'Subscriptions', 'Quota Usage', 'AdvisorScore', 'Outages', 'Support Tickets', 'Reservation Advisor' } | Select-Object -Property Index, name, @{N = "Dimension"; E = { if ($null -ne $_.dimension) { $_.dimension.Rows - 1 } else { 0 } } } | Sort-Object -Property Dimension -Descending
 
     # Ensure Order is an array for safe .Count access
     if ($null -eq $Order) {
@@ -65,25 +55,29 @@ function Start-ARIExcelOrdening {
 
         Foreach ($Ord in $Order0) {
             if ($null -ne $Ord -and $null -ne $Ord.Index -and $null -ne $Ord.Name) {
-                $targetSheet = $Excel.Workbook.Worksheets[$Ord.Name]
+                $targetSheet = $WorksheetsCollection[$Ord.Name]
                 if ($null -ne $targetSheet) {
-                    try {
-                        # Check if Position property exists before using it
-                        if ($targetSheet.PSObject.Properties.Name -contains 'Position') {
-                            if ($Loop -ne 0 -and $Order0.Count -gt ($Loop - 1) -and $null -ne $Order0[$Loop - 1] -and $null -ne $Order0[$Loop - 1].Name) {
-                                $afterSheet = $Excel.Workbook.Worksheets[$Order0[$Loop - 1].Name]
-                                if ($null -ne $afterSheet -and $afterSheet.PSObject.Properties.Name -contains 'Position') {
-                                    $targetSheet.Position = $afterSheet.Position + 1
-                                }
-                            } elseif ($Loop -eq 0 -and $null -ne $Order[0] -and $null -ne $Order[0].Name) {
-                                $afterSheet = $Excel.Workbook.Worksheets[$Order[0].Name]
-                                if ($null -ne $afterSheet -and $afterSheet.PSObject.Properties.Name -contains 'Position') {
-                                    $targetSheet.Position = $afterSheet.Position + 1
-                                }
+                    if ($Loop -ne 0 -and $Order0.Count -gt ($Loop - 1) -and $null -ne $Order0[$Loop - 1] -and $null -ne $Order0[$Loop - 1].Name) {
+                        try {
+                            $afterSheet = $WorksheetsCollection[$Order0[$Loop - 1].Name]
+                            if ($null -ne $afterSheet) {
+                                # Use EPPlus Position property to move sheet after target
+                                $targetSheet.Position = $afterSheet.Position + 1
                             }
+                        } catch {
+                            Write-Debug "  Warning: Could not move sheet $($Ord.Name): $_"
                         }
-                    } catch {
-                        Write-Debug "  Warning: Could not move sheet $($Ord.Name): $_"
+                    }
+                    if ($Loop -eq 0 -and $null -ne $Order[0] -and $null -ne $Order[0].Name) {
+                        try {
+                            $afterSheet = $WorksheetsCollection[$Order[0].Name]
+                            if ($null -ne $afterSheet) {
+                                # Use EPPlus Position property to move sheet after target
+                                $targetSheet.Position = $afterSheet.Position + 1
+                            }
+                        } catch {
+                            Write-Debug "  Warning: Could not move sheet $($Ord.Name): $_"
+                        }
                     }
                 }
             }
@@ -92,30 +86,60 @@ function Start-ARIExcelOrdening {
     }
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Validating if Advisor and Policies are included.')
-    # Safely check for worksheets with Name property
-    if ($null -ne $Worksheets) {
-        $overviewSheet = $Excel.Workbook.Worksheets['Overview']
-        if ($null -ne $overviewSheet -and $overviewSheet.PSObject.Properties.Name -contains 'Position') {
-            $overviewPosition = $overviewSheet.Position
-            $currentPosition = $overviewPosition + 1
-            
-            # Define sheets to move after Overview in order
-            $sheetsToMove = @('Advisor', 'Policy', 'Security Center', 'Quota Usage', 'AdvisorScore', 'Support Tickets', 'Reservation Advisor', 'Subscriptions')
-            
-            foreach ($sheetName in $sheetsToMove) {
-                $sheet = $Excel.Workbook.Worksheets[$sheetName]
-                if ($null -ne $sheet -and $sheet.PSObject.Properties.Name -contains 'Position') {
-                    try {
-                        $sheet.Position = $currentPosition
-                        $currentPosition++
-                    } catch {
-                        Write-Debug "  Warning: Could not move $sheetName sheet: $_"
-                    }
+    # Reorder special sheets after Overview using EPPlus Position property
+    $overviewSheet = $WorksheetsCollection['Overview']
+    if ($null -ne $overviewSheet) {
+        # First, ensure Overview is at position 0
+        try {
+            if ($overviewSheet.PSObject.Properties.Name -contains 'Position') {
+                $overviewSheet.Position = 0
+            }
+        } catch {
+            Write-Debug "  Warning: Could not set Overview position: $_"
+        }
+        
+        # Define sheets to move after Overview in order
+        $sheetsToMove = @('Advisor', 'Policy', 'Security Center', 'Quota Usage', 'AdvisorScore', 'Support Tickets', 'Reservation Advisor', 'Subscriptions')
+        
+        # Collect all sheets that exist
+        $sheetsToReorder = @()
+        foreach ($sheetName in $sheetsToMove) {
+            $sheet = $WorksheetsCollection[$sheetName]
+            if ($null -ne $sheet) {
+                $sheetsToReorder += [PSCustomObject]@{
+                    Name = $sheetName
+                    Sheet = $sheet
                 }
             }
-        } else {
-            # Position property not available - sheet ordering not supported in this EPPlus version
-            Write-Debug "  Sheet ordering skipped: Position property not available"
+        }
+        
+        # Set positions sequentially after Overview (position 0)
+        if ($sheetsToReorder.Count -gt 0) {
+            $currentPosition = 1  # Start after Overview (position 0)
+            
+            foreach ($sheetInfo in $sheetsToReorder) {
+                try {
+                    if ($sheetInfo.Sheet.PSObject.Properties.Name -contains 'Position') {
+                        $sheetInfo.Sheet.Position = $currentPosition
+                        $currentPosition++
+                    } else {
+                        # Fallback: Try using MoveAfter if available
+                        try {
+                            if ($currentPosition -eq 1) {
+                                $WorksheetsCollection.MoveAfter($sheetInfo.Name, 'Overview')
+                            } else {
+                                $prevSheetName = $sheetsToReorder[$currentPosition - 2].Name
+                                $WorksheetsCollection.MoveAfter($sheetInfo.Name, $prevSheetName)
+                            }
+                            $currentPosition++
+                        } catch {
+                            Write-Debug "  Warning: Could not move $($sheetInfo.Name) sheet (Position property not available)"
+                        }
+                    }
+                } catch {
+                    Write-Debug "  Warning: Could not move $($sheetInfo.Name) sheet: $_"
+                }
+            }
         }
     }
 
