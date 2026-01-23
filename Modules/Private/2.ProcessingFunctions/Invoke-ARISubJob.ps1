@@ -43,6 +43,10 @@ function Invoke-ARISubJob {
                 }
 
                 $SubResult = Start-ARISubscriptionJob -Subscriptions $SubsParam -Resources $ResParam -CostData $($args[3])
+                
+                # Debug: Log what was returned
+                $resultCount = if ($null -ne $SubResult -and $SubResult -is [System.Array]) { $SubResult.Count } elseif ($null -ne $SubResult) { 1 } else { 0 }
+                Write-Debug "Invoke-ARISubJob: Start-ARISubscriptionJob returned $resultCount result(s)"
 
                 $SubResult
 
@@ -71,6 +75,10 @@ function Invoke-ARISubJob {
                 }
 
                 $SubResult = Start-ARISubscriptionJob -Subscriptions $SubsParam -Resources $ResParam -CostData $($args[3])
+                
+                # Debug: Log what was returned
+                $resultCount = if ($null -ne $SubResult -and $SubResult -is [System.Array]) { $SubResult.Count } elseif ($null -ne $SubResult) { 1 } else { 0 }
+                Write-Debug "Invoke-ARISubJob: Start-ARISubscriptionJob returned $resultCount result(s)"
 
                 $SubResult
 

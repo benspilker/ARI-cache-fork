@@ -493,16 +493,16 @@ function Start-ARIExtraReports {
     # 2. Subscriptions job (if still available)
     $AzSubs = $script:AzSubs
     
-    if ($null -eq $AzSubs) {
-        # Fallback: try to receive from job if script-scoped variable is null
-        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Script-scoped Subscriptions data is null - checking for Subscriptions job...')
+    if ($null -eq $AzSubs -or ($AzSubs -is [System.Array] -and $AzSubs.Count -eq 0)) {
+        # Fallback: try to receive from job if script-scoped variable is null or empty
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Script-scoped Subscriptions data is null or empty - checking for Subscriptions job...')
         $SubscriptionsJob = Get-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
         if ($null -ne $SubscriptionsJob) {
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Subscriptions job found: State=' + $SubscriptionsJob.State)
             # Wait for job to complete if still running
             while ($SubscriptionsJob.State -eq 'Running') {
-        Write-Progress -Id 1 -activity 'Processing Subscriptions' -Status "50% Complete." -PercentComplete 50
-        Start-Sleep -Seconds 2
+                Write-Progress -Id 1 -activity 'Processing Subscriptions' -Status "50% Complete." -PercentComplete 50
+                Start-Sleep -Seconds 2
                 $SubscriptionsJob = Get-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
                 if ($null -eq $SubscriptionsJob) { break }
             }
@@ -514,10 +514,34 @@ function Start-ARIExtraReports {
                     $AzSubs = @()
                 } else {
                     try {
-                        $AzSubs = Receive-Job -Name 'Subscriptions' -ErrorAction Stop
+                        $jobOutput = Receive-Job -Name 'Subscriptions' -ErrorAction Stop
+                        
+                        # Less aggressive filtering: Only filter out DebugRecord objects
+                        if ($jobOutput -is [System.Array]) {
+                            # Filter out DebugRecord objects, keep everything else
+                            $dataObjects = $jobOutput | Where-Object { $_ -isnot [System.Management.Automation.DebugRecord] }
+                            # Prefer PSCustomObjects (the actual data)
+                            $psCustomObjects = $dataObjects | Where-Object { $_ -is [PSCustomObject] }
+                            if ($psCustomObjects.Count -gt 0) {
+                                $AzSubs = $psCustomObjects
+                            } elseif ($dataObjects.Count -gt 0) {
+                                # Use other objects if no PSCustomObjects found (might be deserialized)
+                                $AzSubs = $dataObjects
+                            } else {
+                                $AzSubs = @()
+                            }
+                        } elseif ($jobOutput -is [PSCustomObject]) {
+                            $AzSubs = $jobOutput
+                        } elseif ($jobOutput -isnot [System.Management.Automation.DebugRecord] -and $jobOutput -isnot [string]) {
+                            # Might be a deserialized object - try to use it
+                            $AzSubs = $jobOutput
+                        } else {
+                            $AzSubs = @()
+                        }
+                        
                         # Store in script scope for safety
                         $script:AzSubs = $AzSubs
-                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Received Subscriptions data from job: Count=' + $AzSubs.Count)
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Received Subscriptions data from job: Count=' + (if ($AzSubs -is [System.Array]) { $AzSubs.Count } else { if ($null -eq $AzSubs) { 0 } else { 1 } }))
                     } catch {
                         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error receiving Subscriptions job results: ' + $_.Exception.Message)
                         $AzSubs = @()
@@ -529,7 +553,7 @@ function Start-ARIExtraReports {
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Subscriptions job not found - may have completed and been removed already.')
         }
     } else {
-        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Using script-scoped Subscriptions data: Count=' + $AzSubs.Count)
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Using script-scoped Subscriptions data: Count=' + (if ($AzSubs -is [System.Array]) { $AzSubs.Count } else { if ($null -eq $AzSubs) { 0 } else { 1 } }))
     }
     
     # Ensure AzSubs is an array for safe handling
@@ -538,6 +562,11 @@ function Start-ARIExtraReports {
     } elseif ($AzSubs -isnot [System.Array]) {
         # If it's a single object, wrap it in an array
         $AzSubs = @($AzSubs)
+    }
+    
+    # If still empty, log a warning
+    if ($AzSubs.Count -eq 0) {
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Warning: No Subscriptions data available (Count=0) - Subscriptions sheet will be empty or skipped')
     }
 
     Build-ARISubsReport -File $File -Sub $AzSubs -IncludeCosts $IncludeCosts -TableStyle $TableStyle
