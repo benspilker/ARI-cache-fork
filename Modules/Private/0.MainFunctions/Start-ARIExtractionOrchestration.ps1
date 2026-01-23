@@ -67,16 +67,36 @@ function Start-ARIExtractionOrchestration {
         }
 
     # Safely access PolicyAssign.policyAssignments.Count - handle null/empty cases
-    if ($null -ne $PolicyAssign -and $null -ne $PolicyAssign.policyAssignments) {
-        if ($PolicyAssign.policyAssignments -is [System.Array]) {
-            $PolicyCount = [string]$PolicyAssign.policyAssignments.Count
+    $PolicyCount = "0"
+    if ($null -ne $PolicyAssign) {
+        if ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
+            # Safely check if policyAssignments property exists before accessing
+            $hasPolicyAssignments = $false
+            if ($PolicyAssign -is [PSCustomObject]) {
+                $hasPolicyAssignments = $PolicyAssign.PSObject.Properties.Name -contains 'policyAssignments'
+            } elseif ($PolicyAssign -is [System.Collections.Hashtable]) {
+                $hasPolicyAssignments = $PolicyAssign.ContainsKey('policyAssignments')
+            }
+            
+            if ($hasPolicyAssignments -and $null -ne $PolicyAssign.policyAssignments) {
+                if ($PolicyAssign.policyAssignments -is [System.Array]) {
+                    $PolicyCount = [string]$PolicyAssign.policyAssignments.Count
+                } else {
+                    $PolicyCount = "1"
+                }
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Policy data collected: ' + $PolicyCount + ' policy assignment(s)')
+            } else {
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'No Policy data collected (PolicyAssign has no policyAssignments property)')
+            }
+        } elseif ($PolicyAssign -is [System.Array]) {
+            $PolicyCount = [string]$PolicyAssign.Count
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Policy data collected: ' + $PolicyCount + ' policy assignment(s)')
         } else {
             $PolicyCount = "1"
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Policy data collected: 1 policy assignment')
         }
-        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Policy data collected: ' + $PolicyCount + ' policy assignment(s)')
     } else {
-        $PolicyCount = "0"
-        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'No Policy data collected (PolicyAssign is null or empty)')
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'No Policy data collected (PolicyAssign is null)')
     }
 
     if ($IncludeCosts.IsPresent) {

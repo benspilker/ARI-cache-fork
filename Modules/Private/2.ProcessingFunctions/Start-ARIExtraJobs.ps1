@@ -109,7 +109,14 @@ function Start-ARIExtraJobs {
             if ($PolicyAssign -is [System.Array]) {
                 $hasPolicyAssign = $PolicyAssign.Count -gt 0
             } elseif ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
-                $hasPolicyAssign = $null -ne $PolicyAssign.policyAssignments
+                # Safely check if policyAssignments property exists before accessing
+                $hasPolicyAssignments = $false
+                if ($PolicyAssign -is [PSCustomObject]) {
+                    $hasPolicyAssignments = $PolicyAssign.PSObject.Properties.Name -contains 'policyAssignments'
+                } elseif ($PolicyAssign -is [System.Collections.Hashtable]) {
+                    $hasPolicyAssignments = $PolicyAssign.ContainsKey('policyAssignments')
+                }
+                $hasPolicyAssign = $hasPolicyAssignments -and $null -ne $PolicyAssign.policyAssignments
             } else {
                 $hasPolicyAssign = $true
             }
