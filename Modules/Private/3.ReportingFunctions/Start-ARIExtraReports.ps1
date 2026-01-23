@@ -95,9 +95,81 @@ function Start-ARIExtraReports {
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Checking if Should Generate Policy Sheet.')
     if (!$SkipPolicy.IsPresent) {
-        if(get-job | Where-Object {$_.Name -eq 'Policy'})
+        # Check if Policy data is available from processed Policy.json cache (array format)
+        # This happens when Policy.json contains processed records instead of raw PolicyAssign/PolicyDef/PolicySetDef
+        $Pol = $null
+        $policyCacheFile = $null
+        
+        # Try multiple paths to find Policy.json
+        $possiblePaths = @(
+            "/root/AzureResourceInventory/ReportCache/Policy.json",
+            (Join-Path $env:HOME "AzureResourceInventory/ReportCache/Policy.json"),
+            (Join-Path (Split-Path $File -Parent) "ReportCache/Policy.json")
+        )
+        
+        foreach ($testPath in $possiblePaths) {
+            if (Test-Path $testPath) {
+                $policyCacheFile = $testPath
+                break
+            }
+        }
+        
+        if ($null -ne $policyCacheFile) {
+            try {
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Checking Policy cache file: ' + $policyCacheFile)
+                $policyCacheData = Get-Content $policyCacheFile -Raw | ConvertFrom-Json
+                # Check if it's processed format (array) vs raw format (object with PolicyAssign/PolicyDef properties)
+                if ($policyCacheData -is [System.Array]) {
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found processed Policy data in cache (array format) - using directly')
+                    $Pol = $policyCacheData
+                    # Ensure Pol is an array
+                    if ($null -eq $Pol) {
+                        $Pol = @()
+                    } elseif ($Pol -isnot [System.Array]) {
+                        $Pol = @($Pol)
+                    }
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Loaded ' + $Pol.Count + ' processed Policy record(s) from cache')
+                }
+            } catch {
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error loading Policy cache: ' + $_.Exception.Message)
+            }
+        }
+        
+        # If we have processed Policy data, use it directly (skip job)
+        if ($null -ne $Pol -and $Pol.Count -gt 0) {
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Generating Policy Sheet from processed cache data.')
+            
+            # Aggressive memory cleanup before Policy sheet generation
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Running aggressive memory cleanup before Policy sheet Excel generation.')
+            try {
+                Get-Job | Remove-Job -Force -ErrorAction SilentlyContinue
+                for ($i = 1; $i -le 5; $i++) {
+                    [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $false)
+                    [System.GC]::WaitForPendingFinalizers()
+                    [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
+                }
+                Clear-ARIMemory
+            } catch {
+                Write-Debug "  Warning: Pre-Policy memory cleanup had issues: $_"
+            }
+            
+            Build-ARIPolicyReport -File $File -Pol $Pol -TableStyle $TableStyle
+            
+            # Cleanup after Policy sheet generation
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Running memory cleanup after Policy sheet generation.')
+            try {
+                [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
+                Clear-ARIMemory
+            } catch {
+                Write-Debug "  Warning: Post-Policy cleanup had issues: $_"
+            }
+            
+            Write-Progress -Id 1 -activity 'Processing Policies' -Status "100% Complete." -Completed
+        }
+        # Otherwise, check for Policy job (for raw Policy data processing)
+        elseif (get-job | Where-Object {$_.Name -eq 'Policy'})
             {
-                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Generating Policy Sheet.')
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Generating Policy Sheet from Policy job.')
 
                 # Aggressive memory cleanup BEFORE receiving Policy job results to free memory from previous operations
                 Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Running aggressive memory cleanup before receiving Policy job results.')
