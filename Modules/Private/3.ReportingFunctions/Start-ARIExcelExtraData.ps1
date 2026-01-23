@@ -19,7 +19,22 @@ Authors: Claudio Merola
 function Start-ARIExcelExtraData {
     Param($File)
 
+    # Check if Excel file exists before trying to open it
+    if (-not (Test-Path $File)) {
+        $errorMsg = "Cannot bind argument to parameter 'ExcelPackage' because it is null. Excel file not found: $File"
+        Write-Warning "Could not find $File"
+        Write-Error $errorMsg
+        throw $errorMsg
+    }
+    
     $excel = Open-ExcelPackage -Path $File
+    
+    # Verify that Excel package was opened successfully
+    if ($null -eq $excel) {
+        $errorMsg = "Cannot bind argument to parameter 'ExcelPackage' because it is null. Failed to open Excel file: $File"
+        Write-Error $errorMsg
+        throw $errorMsg
+    }
 
     # Safely access Worksheets.Name - ensure it's always an array
     $worksheetNames = @()

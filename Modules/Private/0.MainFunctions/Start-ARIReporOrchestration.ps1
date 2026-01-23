@@ -287,6 +287,26 @@ Function Start-ARIReporOrchestration {
     <############################################################## REPORT EXTRA DETAILS ###################################################################>
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Starting Reporting Extra Details.')
+    
+    # Check if Excel file exists before trying to add extra data
+    # If no modules had data, the file might not have been created
+    if (-not (Test-Path $File)) {
+        Write-Warning "Excel file not found: $File"
+        Write-Warning "This may indicate that no resource data was found in cache files."
+        Write-Warning "Creating empty Excel file with Overview sheet..."
+        
+        try {
+            # Create an empty Excel file with at least an Overview sheet
+            $emptyData = @([PSCustomObject]@{ Message = "No resource data found in cache files" })
+            $emptyData | Export-Excel -Path $File -WorksheetName "Overview" -AutoSize -TableStyle $TableStyle -ErrorAction Stop
+            Write-Host "[INFO] Created empty Excel file: $File" -ForegroundColor Cyan
+        } catch {
+            Write-Warning "Failed to create empty Excel file: $_"
+            Write-Warning "Skipping Start-ARIExcelExtraData - no Excel file available"
+            return
+        }
+    }
+    
     Write-Host "[DEBUG] Start-ARIReporOrchestration: About to call Start-ARIExcelExtraData" -ForegroundColor Magenta
     try {
         Start-ARIExcelExtraData -File $File
