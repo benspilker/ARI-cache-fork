@@ -209,26 +209,188 @@ function Start-ARIExtraReports {
                 Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Processing Advisories directly using Start-ARIAdvisoryJob (Count=' + $advisoriesArray.Count + ')')
                 # Load Start-ARIAdvisoryJob function if available
                 # Path: From Modules/Private/3.ReportingFunctions/ to Modules/Public/PublicFunctions/Jobs/
-                # Go up 2 levels: ..\..\ then Public\PublicFunctions\Jobs\Start-ARIAdvisoryJob.ps1
-                $ariModulePath = Join-Path (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) "Public\PublicFunctions\Jobs") "Start-ARIAdvisoryJob.ps1"
-                if (Test-Path $ariModulePath) {
-                    . $ariModulePath
-                    $Adv = Start-ARIAdvisoryJob -Advisories $advisoriesArray
-                    # Store in script scope
-                    $script:Adv = $Adv
-                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Processed Advisory data directly: Count=' + $Adv.Count)
-                } else {
-                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Warning: Start-ARIAdvisoryJob.ps1 not found at: ' + $ariModulePath)
-                    # Try alternative path (if PSScriptRoot is not set correctly)
-                    $altPath = Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent -Parent) "Public\PublicFunctions\Jobs") "Start-ARIAdvisoryJob.ps1"
-                    if (Test-Path $altPath) {
-                        . $altPath
-                        $Adv = Start-ARIAdvisoryJob -Advisories $advisoriesArray
-                        $script:Adv = $Adv
-                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Processed Advisory data directly using alternative path: Count=' + $Adv.Count)
+                # Use same method as Start-ARIExcelJob.ps1 for reliable path resolution
+                try {
+                    $ParentPath = (Get-Item $PSScriptRoot).Parent.Parent
+                    $ariModulePath = Join-Path (Join-Path $ParentPath "Public\PublicFunctions\Jobs") "Start-ARIAdvisoryJob.ps1"
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Attempting to load Start-ARIAdvisoryJob from: ' + $ariModulePath)
+                    
+                    if (Test-Path $ariModulePath) {
+                        try {
+                            . $ariModulePath
+                            $Adv = Start-ARIAdvisoryJob -Advisories $advisoriesArray
+                            # Ensure Adv is an array
+                            if ($null -eq $Adv) {
+                                $Adv = @()
+                            } elseif ($Adv -isnot [System.Array]) {
+                                $Adv = @($Adv)
+                            }
+                            # Store in script scope
+                            $script:Adv = $Adv
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Processed Advisory data directly: Count=' + $Adv.Count)
+                        } catch {
+                            $loadError = $_.Exception.Message
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error loading/executing Start-ARIAdvisoryJob: ' + $loadError)
+                            # Try to process inline if function loading fails
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Attempting inline Advisory processing...')
+                            $Adv = @()
+                            foreach ($advItem in $advisoriesArray) {
+                                if ($null -ne $advItem -and $null -ne $advItem.PROPERTIES) {
+                                    $data = $advItem.PROPERTIES
+                                    if ($data.resourceMetadata.resourceId) {
+                                        $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
+                                        $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
+                                        $Resource = $data.resourceMetadata.resourceId.split('/')
+                                        if ($Resource.Count -lt 4) {
+                                            $ResourceType = $data.impactedField
+                                            $ResourceName = $data.impactedValue
+                                        } else {
+                                            $ResourceType = ($Resource[6] + '/' + $Resource[7])
+                                            $ResourceName = $Resource[8]
+                                        }
+                                        if ($data.impactedField -eq $ResourceType) {
+                                            $ImpactedField = ''
+                                        } else {
+                                            $ImpactedField = $data.impactedField
+                                        }
+                                        if ($data.impactedValue -eq $ResourceName) {
+                                            $ImpactedValue = ''
+                                        } else {
+                                            $ImpactedValue = $data.impactedValue
+                                        }
+                                        $obj = @{
+                                            'Subscription'           = $Resource[2];
+                                            'Resource Group'         = $Resource[4];
+                                            'Resource Type'          = $ResourceType;
+                                            'Name'                   = $ResourceName;
+                                            'Detailed Type'          = $ImpactedField;
+                                            'Detailed Name'          = $ImpactedValue;
+                                            'Category'               = $data.category;
+                                            'Impact'                 = $data.impact;
+                                            'Description'            = $data.shortDescription.problem;
+                                            'SKU'                    = $data.extendedProperties.sku;
+                                            'Term'                   = $data.extendedProperties.term;
+                                            'Look-back Period'       = $data.extendedProperties.lookbackPeriod;
+                                            'Quantity'               = $data.extendedProperties.qty;
+                                            'Savings Currency'       = $SavingsCurrency;
+                                            'Annual Savings'         = "=$Savings";
+                                            'Savings Region'         = $data.extendedProperties.region
+                                        }
+                                        $Adv += $obj
+                                    }
+                                }
+                            }
+                            $script:Adv = $Adv
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Processed Advisory data inline: Count=' + $Adv.Count)
+                        }
                     } else {
-                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Warning: Start-ARIAdvisoryJob.ps1 not found at alternative path: ' + $altPath)
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Warning: Start-ARIAdvisoryJob.ps1 not found at: ' + $ariModulePath)
+                        # Fallback to inline processing
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Attempting inline Advisory processing...')
+                        $Adv = @()
+                        foreach ($advItem in $advisoriesArray) {
+                            if ($null -ne $advItem -and $null -ne $advItem.PROPERTIES) {
+                                $data = $advItem.PROPERTIES
+                                if ($data.resourceMetadata.resourceId) {
+                                    $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
+                                    $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
+                                    $Resource = $data.resourceMetadata.resourceId.split('/')
+                                    if ($Resource.Count -lt 4) {
+                                        $ResourceType = $data.impactedField
+                                        $ResourceName = $data.impactedValue
+                                    } else {
+                                        $ResourceType = ($Resource[6] + '/' + $Resource[7])
+                                        $ResourceName = $Resource[8]
+                                    }
+                                    if ($data.impactedField -eq $ResourceType) {
+                                        $ImpactedField = ''
+                                    } else {
+                                        $ImpactedField = $data.impactedField
+                                    }
+                                    if ($data.impactedValue -eq $ResourceName) {
+                                        $ImpactedValue = ''
+                                    } else {
+                                        $ImpactedValue = $data.impactedValue
+                                    }
+                                    $obj = @{
+                                        'Subscription'           = $Resource[2];
+                                        'Resource Group'         = $Resource[4];
+                                        'Resource Type'          = $ResourceType;
+                                        'Name'                   = $ResourceName;
+                                        'Detailed Type'          = $ImpactedField;
+                                        'Detailed Name'          = $ImpactedValue;
+                                        'Category'               = $data.category;
+                                        'Impact'                 = $data.impact;
+                                        'Description'            = $data.shortDescription.problem;
+                                        'SKU'                    = $data.extendedProperties.sku;
+                                        'Term'                   = $data.extendedProperties.term;
+                                        'Look-back Period'       = $data.extendedProperties.lookbackPeriod;
+                                        'Quantity'               = $data.extendedProperties.qty;
+                                        'Savings Currency'       = $SavingsCurrency;
+                                        'Annual Savings'         = "=$Savings";
+                                        'Savings Region'         = $data.extendedProperties.region
+                                    }
+                                    $Adv += $obj
+                                }
+                            }
+                        }
+                        $script:Adv = $Adv
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Processed Advisory data inline: Count=' + $Adv.Count)
                     }
+                } catch {
+                    $pathError = $_.Exception.Message
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error resolving path to Start-ARIAdvisoryJob: ' + $pathError)
+                    # Last resort: inline processing
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Attempting inline Advisory processing as fallback...')
+                    $Adv = @()
+                    foreach ($advItem in $advisoriesArray) {
+                        if ($null -ne $advItem -and $null -ne $advItem.PROPERTIES) {
+                            $data = $advItem.PROPERTIES
+                            if ($data.resourceMetadata.resourceId) {
+                                $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
+                                $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
+                                $Resource = $data.resourceMetadata.resourceId.split('/')
+                                if ($Resource.Count -lt 4) {
+                                    $ResourceType = $data.impactedField
+                                    $ResourceName = $data.impactedValue
+                                } else {
+                                    $ResourceType = ($Resource[6] + '/' + $Resource[7])
+                                    $ResourceName = $Resource[8]
+                                }
+                                if ($data.impactedField -eq $ResourceType) {
+                                    $ImpactedField = ''
+                                } else {
+                                    $ImpactedField = $data.impactedField
+                                }
+                                if ($data.impactedValue -eq $ResourceName) {
+                                    $ImpactedValue = ''
+                                } else {
+                                    $ImpactedValue = $data.impactedValue
+                                }
+                                $obj = @{
+                                    'Subscription'           = $Resource[2];
+                                    'Resource Group'         = $Resource[4];
+                                    'Resource Type'          = $ResourceType;
+                                    'Name'                   = $ResourceName;
+                                    'Detailed Type'          = $ImpactedField;
+                                    'Detailed Name'          = $ImpactedValue;
+                                    'Category'               = $data.category;
+                                    'Impact'                 = $data.impact;
+                                    'Description'            = $data.shortDescription.problem;
+                                    'SKU'                    = $data.extendedProperties.sku;
+                                    'Term'                   = $data.extendedProperties.term;
+                                    'Look-back Period'       = $data.extendedProperties.lookbackPeriod;
+                                    'Quantity'               = $data.extendedProperties.qty;
+                                    'Savings Currency'       = $SavingsCurrency;
+                                    'Annual Savings'         = "=$Savings";
+                                    'Savings Region'         = $data.extendedProperties.region
+                                }
+                                $Adv += $obj
+                            }
+                        }
+                    }
+                    $script:Adv = $Adv
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Processed Advisory data inline (fallback): Count=' + $Adv.Count)
                 }
             } else {
                 Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Advisories parameter is empty (Count=0)')
