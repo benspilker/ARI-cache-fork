@@ -946,10 +946,28 @@ Function Invoke-CachedARI-Patched {
             Start-ARIExtraJobs -SkipDiagram $SkipDiagram -SkipAdvisory $SkipAdvisory -SkipPolicy $SkipPolicy -SecurityCenter $Security -Subscriptions $Subscriptions -Resources $resourcesForJob -Advisories $Advisories -DDFile $DDFile -DiagramCache $DiagramCache -FullEnv $FullEnv -ResourceContainers $ResourceContainers -Security $Security -PolicyAssign $PolicyAssign -PolicySetDef $PolicySetDef -PolicyDef $PolicyDef -IncludeCosts $IncludeCosts -CostData $CostData -Automation $Automation
             Write-Debug "[UseExistingCache] Start-ARIExtraJobs completed successfully"
         } catch {
-            Write-Error "Error in Start-ARIExtraJobs: $($_.Exception.Message)"
-            Write-Error "Stack trace: $($_.ScriptStackTrace)"
-            $errorLine = if ($null -ne $_.InvocationInfo) { $_.InvocationInfo.ScriptLineNumber } else { "Unknown" }
-            $errorFunc = if ($null -ne $_.InvocationInfo -and $null -ne $_.InvocationInfo.FunctionName) { $_.InvocationInfo.FunctionName } else { "Unknown" }
+            # Safe error handling - check property existence before accessing
+            $errorMsg = if ($null -ne $_ -and $null -ne $_.Exception) { $_.Exception.Message } else { "Unknown error" }
+            $errorStack = if ($null -ne $_ -and $null -ne $_.ScriptStackTrace) { $_.ScriptStackTrace } else { "No stack trace available" }
+            
+            Write-Error "Error in Start-ARIExtraJobs: $errorMsg"
+            Write-Error "Stack trace: $errorStack"
+            
+            $errorLine = "Unknown"
+            $errorFunc = "Unknown"
+            
+            try {
+                if ($null -ne $_ -and $null -ne $_.InvocationInfo) {
+                    $errorLine = if ($null -ne $_.InvocationInfo.ScriptLineNumber) { $_.InvocationInfo.ScriptLineNumber } else { "Unknown" }
+                    # Check if FunctionName property exists before accessing
+                    if ($_.InvocationInfo.PSObject.Properties.Name -contains 'FunctionName') {
+                        $errorFunc = $_.InvocationInfo.FunctionName
+                    }
+                }
+            } catch {
+                # Ignore errors accessing InvocationInfo
+            }
+            
             Write-Error "Line: $errorLine"
             Write-Error "Function: $errorFunc"
             throw
@@ -1024,11 +1042,28 @@ Function Invoke-CachedARI-Patched {
         try {
             Start-ARIReporOrchestration -ReportCache $ReportCache -SecurityCenter $SecurityCenter -File $File -Quotas $Quotas -SkipPolicy $SkipPolicy -SkipAdvisory $SkipAdvisory -IncludeCosts $IncludeCosts -Automation $Automation -TableStyle $TableStyle -Advisories $Advisories
         } catch {
-            $errorDetails = $_.Exception.Message
-            $errorLine = if ($null -ne $_.InvocationInfo) { $_.InvocationInfo.ScriptLineNumber } else { "Unknown" }
-            $errorFunction = if ($null -ne $_.InvocationInfo -and $null -ne $_.InvocationInfo.FunctionName) { $_.InvocationInfo.FunctionName } else { "Unknown" }
+            # Safe error handling - check property existence before accessing
+            $errorDetails = if ($null -ne $_ -and $null -ne $_.Exception) { $_.Exception.Message } else { "Unknown error" }
+            
+            $errorLine = "Unknown"
+            $errorFunction = "Unknown"
+            
+            try {
+                if ($null -ne $_ -and $null -ne $_.InvocationInfo) {
+                    $errorLine = if ($null -ne $_.InvocationInfo.ScriptLineNumber) { $_.InvocationInfo.ScriptLineNumber } else { "Unknown" }
+                    # Check if FunctionName property exists before accessing
+                    if ($_.InvocationInfo.PSObject.Properties.Name -contains 'FunctionName') {
+                        $errorFunction = $_.InvocationInfo.FunctionName
+                    }
+                }
+            } catch {
+                # Ignore errors accessing InvocationInfo
+            }
+            
+            $errorStack = if ($null -ne $_ -and $null -ne $_.ScriptStackTrace) { $_.ScriptStackTrace } else { "No stack trace available" }
+            
             Write-Error "Excel generation failed in $errorFunction at line $errorLine : $errorDetails"
-            Write-Error "Stack trace: $($_.ScriptStackTrace)"
+            Write-Error "Stack trace: $errorStack"
             throw
         }
 
