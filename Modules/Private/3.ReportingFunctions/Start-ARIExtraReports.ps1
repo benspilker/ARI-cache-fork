@@ -310,6 +310,7 @@ function Start-ARIExtraReports {
                                 try {
                                     if ($null -ne $advItem -and $null -ne $advItem.PROPERTIES) {
                                         $data = $advItem.PROPERTIES
+                                        # Handle advisories WITH resourceId (resource-level recommendations)
                                         if ($null -ne $data -and $null -ne $data.resourceMetadata -and $null -ne $data.resourceMetadata.resourceId) {
                                             $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
                                             $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
@@ -366,6 +367,46 @@ function Start-ARIExtraReports {
                                             }
                                             $Adv += $obj
                                         }
+                                        # Handle advisories WITHOUT resourceId (subscription-level or management group-level recommendations)
+                                        elseif ($null -ne $data) {
+                                            # Extract subscription ID from advisory ID if available
+                                            $Subscription = ''
+                                            if ($null -ne $advItem.id) {
+                                                # Advisory ID format: /subscriptions/{subId}/providers/Microsoft.Advisor/recommendations/{recId}
+                                                $idParts = $advItem.id -split '/'
+                                                $subIndex = [array]::IndexOf($idParts, 'subscriptions')
+                                                if ($subIndex -ge 0 -and $subIndex + 1 -lt $idParts.Count) {
+                                                    $Subscription = $idParts[$subIndex + 1]
+                                                }
+                                            }
+                                            
+                                            # Use impactedField/impactedValue for resource type/name
+                                            $ResourceType = if ($null -ne $data.impactedField) { $data.impactedField } else { '' }
+                                            $ResourceName = if ($null -ne $data.impactedValue) { $data.impactedValue } else { '' }
+                                            
+                                            $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
+                                            $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
+                                            
+                                            $obj = @{
+                                                'Subscription'           = $Subscription;
+                                                'Resource Group'         = '';
+                                                'Resource Type'          = $ResourceType;
+                                                'Name'                   = $ResourceName;
+                                                'Detailed Type'          = '';
+                                                'Detailed Name'          = '';
+                                                'Category'               = if ($null -ne $data.category) { $data.category } else { '' };
+                                                'Impact'                 = if ($null -ne $data.impact) { $data.impact } else { '' };
+                                                'Description'            = if ($null -ne $data.shortDescription) { $data.shortDescription.problem } else { '' };
+                                                'SKU'                    = if ($null -ne $data.extendedProperties) { $data.extendedProperties.sku } else { '' };
+                                                'Term'                   = if ($null -ne $data.extendedProperties) { $data.extendedProperties.term } else { '' };
+                                                'Look-back Period'       = if ($null -ne $data.extendedProperties) { $data.extendedProperties.lookbackPeriod } else { '' };
+                                                'Quantity'               = if ($null -ne $data.extendedProperties) { $data.extendedProperties.qty } else { '' };
+                                                'Savings Currency'       = $SavingsCurrency;
+                                                'Annual Savings'         = "=$Savings";
+                                                'Savings Region'         = if ($null -ne $data.extendedProperties) { $data.extendedProperties.region } else { '' }
+                                            }
+                                            $Adv += $obj
+                                        }
                                     }
                                 } catch {
                                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error processing Advisory item: ' + $_.Exception.Message)
@@ -384,6 +425,7 @@ function Start-ARIExtraReports {
                             try {
                                 if ($null -ne $advItem -and $null -ne $advItem.PROPERTIES) {
                                     $data = $advItem.PROPERTIES
+                                    # Handle advisories WITH resourceId (resource-level recommendations)
                                     if ($null -ne $data -and $null -ne $data.resourceMetadata -and $null -ne $data.resourceMetadata.resourceId) {
                                         $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
                                         $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
@@ -440,6 +482,46 @@ function Start-ARIExtraReports {
                                         }
                                         $Adv += $obj
                                     }
+                                    # Handle advisories WITHOUT resourceId (subscription-level or management group-level recommendations)
+                                    elseif ($null -ne $data) {
+                                        # Extract subscription ID from advisory ID if available
+                                        $Subscription = ''
+                                        if ($null -ne $advItem.id) {
+                                            # Advisory ID format: /subscriptions/{subId}/providers/Microsoft.Advisor/recommendations/{recId}
+                                            $idParts = $advItem.id -split '/'
+                                            $subIndex = [array]::IndexOf($idParts, 'subscriptions')
+                                            if ($subIndex -ge 0 -and $subIndex + 1 -lt $idParts.Count) {
+                                                $Subscription = $idParts[$subIndex + 1]
+                                            }
+                                        }
+                                        
+                                        # Use impactedField/impactedValue for resource type/name
+                                        $ResourceType = if ($null -ne $data.impactedField) { $data.impactedField } else { '' }
+                                        $ResourceName = if ($null -ne $data.impactedValue) { $data.impactedValue } else { '' }
+                                        
+                                        $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
+                                        $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
+                                        
+                                        $obj = @{
+                                            'Subscription'           = $Subscription;
+                                            'Resource Group'         = '';
+                                            'Resource Type'          = $ResourceType;
+                                            'Name'                   = $ResourceName;
+                                            'Detailed Type'          = '';
+                                            'Detailed Name'          = '';
+                                            'Category'               = if ($null -ne $data.category) { $data.category } else { '' };
+                                            'Impact'                 = if ($null -ne $data.impact) { $data.impact } else { '' };
+                                            'Description'            = if ($null -ne $data.shortDescription) { $data.shortDescription.problem } else { '' };
+                                            'SKU'                    = if ($null -ne $data.extendedProperties) { $data.extendedProperties.sku } else { '' };
+                                            'Term'                   = if ($null -ne $data.extendedProperties) { $data.extendedProperties.term } else { '' };
+                                            'Look-back Period'       = if ($null -ne $data.extendedProperties) { $data.extendedProperties.lookbackPeriod } else { '' };
+                                            'Quantity'               = if ($null -ne $data.extendedProperties) { $data.extendedProperties.qty } else { '' };
+                                            'Savings Currency'       = $SavingsCurrency;
+                                            'Annual Savings'         = "=$Savings";
+                                            'Savings Region'         = if ($null -ne $data.extendedProperties) { $data.extendedProperties.region } else { '' }
+                                        }
+                                        $Adv += $obj
+                                    }
                                 }
                             } catch {
                                 Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error processing Advisory item: ' + $_.Exception.Message)
@@ -459,6 +541,7 @@ function Start-ARIExtraReports {
                         try {
                             if ($null -ne $advItem -and $null -ne $advItem.PROPERTIES) {
                                 $data = $advItem.PROPERTIES
+                                # Handle advisories WITH resourceId (resource-level recommendations)
                                 if ($null -ne $data -and $null -ne $data.resourceMetadata -and $null -ne $data.resourceMetadata.resourceId) {
                                     $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
                                     $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
@@ -512,6 +595,46 @@ function Start-ARIExtraReports {
                                         'Savings Currency'       = $SavingsCurrency;
                                         'Annual Savings'         = "=$Savings";
                                         'Savings Region'         = $data.extendedProperties.region
+                                    }
+                                    $Adv += $obj
+                                }
+                                # Handle advisories WITHOUT resourceId (subscription-level or management group-level recommendations)
+                                elseif ($null -ne $data) {
+                                    # Extract subscription ID from advisory ID if available
+                                    $Subscription = ''
+                                    if ($null -ne $advItem.id) {
+                                        # Advisory ID format: /subscriptions/{subId}/providers/Microsoft.Advisor/recommendations/{recId}
+                                        $idParts = $advItem.id -split '/'
+                                        $subIndex = [array]::IndexOf($idParts, 'subscriptions')
+                                        if ($subIndex -ge 0 -and $subIndex + 1 -lt $idParts.Count) {
+                                            $Subscription = $idParts[$subIndex + 1]
+                                        }
+                                    }
+                                    
+                                    # Use impactedField/impactedValue for resource type/name
+                                    $ResourceType = if ($null -ne $data.impactedField) { $data.impactedField } else { '' }
+                                    $ResourceName = if ($null -ne $data.impactedValue) { $data.impactedValue } else { '' }
+                                    
+                                    $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
+                                    $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
+                                    
+                                    $obj = @{
+                                        'Subscription'           = $Subscription;
+                                        'Resource Group'         = '';
+                                        'Resource Type'          = $ResourceType;
+                                        'Name'                   = $ResourceName;
+                                        'Detailed Type'          = '';
+                                        'Detailed Name'          = '';
+                                        'Category'               = if ($null -ne $data.category) { $data.category } else { '' };
+                                        'Impact'                 = if ($null -ne $data.impact) { $data.impact } else { '' };
+                                        'Description'            = if ($null -ne $data.shortDescription) { $data.shortDescription.problem } else { '' };
+                                        'SKU'                    = if ($null -ne $data.extendedProperties) { $data.extendedProperties.sku } else { '' };
+                                        'Term'                   = if ($null -ne $data.extendedProperties) { $data.extendedProperties.term } else { '' };
+                                        'Look-back Period'       = if ($null -ne $data.extendedProperties) { $data.extendedProperties.lookbackPeriod } else { '' };
+                                        'Quantity'               = if ($null -ne $data.extendedProperties) { $data.extendedProperties.qty } else { '' };
+                                        'Savings Currency'       = $SavingsCurrency;
+                                        'Annual Savings'         = "=$Savings";
+                                        'Savings Region'         = if ($null -ne $data.extendedProperties) { $data.extendedProperties.region } else { '' }
                                     }
                                     $Adv += $obj
                                 }
