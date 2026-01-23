@@ -1269,27 +1269,64 @@ Function Invoke-CachedARI-Patched {
                                     if ($splitDescCount -gt 1 -and $null -ne $SplitDescription[1]) {
                                         $whatHappenedLines = $SplitDescription[1].Split([Environment]::NewLine)
                                         $whatHappenedLinesCount = if ($null -ne $whatHappenedLines -and $whatHappenedLines -is [System.Array]) { $whatHappenedLines.Count } elseif ($null -ne $whatHappenedLines) { 1 } else { 0 }
-                                        if ($whatHappenedLinesCount -gt 1) { $whatHappened = $whatHappenedLines[1] }
+                                        # Take first non-empty line (index 0) or second line if first is empty
+                                        if ($whatHappenedLinesCount -gt 0) {
+                                            $whatHappened = if ($whatHappenedLinesCount -gt 1 -and [string]::IsNullOrWhiteSpace($whatHappenedLines[0])) {
+                                                $whatHappenedLines[1]
+                                            } else {
+                                                $whatHappenedLines[0]
+                                            }
+                                            # Clean up any remaining HTML tags if HTML parsing failed
+                                            $whatHappened = $whatHappened -replace '<[^>]+>', '' -replace '&nbsp;', ' ' -replace '&amp;', '&' -replace '&lt;', '<' -replace '&gt;', '>' -replace '&quot;', '"' -replace '&#39;', "'"
+                                        }
                                     }
                                     if ($splitDescCount -gt 2 -and $null -ne $SplitDescription[2]) {
                                         $whatWentWrongLines = $SplitDescription[2].Split([Environment]::NewLine)
                                         $whatWentWrongLinesCount = if ($null -ne $whatWentWrongLines -and $whatWentWrongLines -is [System.Array]) { $whatWentWrongLines.Count } elseif ($null -ne $whatWentWrongLines) { 1 } else { 0 }
-                                        if ($whatWentWrongLinesCount -gt 1) { $whatWentWrong = $whatWentWrongLines[1] }
+                                        if ($whatWentWrongLinesCount -gt 0) {
+                                            $whatWentWrong = if ($whatWentWrongLinesCount -gt 1 -and [string]::IsNullOrWhiteSpace($whatWentWrongLines[0])) {
+                                                $whatWentWrongLines[1]
+                                            } else {
+                                                $whatWentWrongLines[0]
+                                            }
+                                            $whatWentWrong = $whatWentWrong -replace '<[^>]+>', '' -replace '&nbsp;', ' ' -replace '&amp;', '&' -replace '&lt;', '<' -replace '&gt;', '>' -replace '&quot;', '"' -replace '&#39;', "'"
+                                        }
                                     }
                                     if ($splitDescCount -gt 3 -and $null -ne $SplitDescription[3]) {
                                         $howDidWeRespondLines = $SplitDescription[3].Split([Environment]::NewLine)
                                         $howDidWeRespondLinesCount = if ($null -ne $howDidWeRespondLines -and $howDidWeRespondLines -is [System.Array]) { $howDidWeRespondLines.Count } elseif ($null -ne $howDidWeRespondLines) { 1 } else { 0 }
-                                        if ($howDidWeRespondLinesCount -gt 1) { $howDidWeRespond = $howDidWeRespondLines[1] }
+                                        if ($howDidWeRespondLinesCount -gt 0) {
+                                            $howDidWeRespond = if ($howDidWeRespondLinesCount -gt 1 -and [string]::IsNullOrWhiteSpace($howDidWeRespondLines[0])) {
+                                                $howDidWeRespondLines[1]
+                                            } else {
+                                                $howDidWeRespondLines[0]
+                                            }
+                                            $howDidWeRespond = $howDidWeRespond -replace '<[^>]+>', '' -replace '&nbsp;', ' ' -replace '&amp;', '&' -replace '&lt;', '<' -replace '&gt;', '>' -replace '&quot;', '"' -replace '&#39;', "'"
+                                        }
                                     }
                                     if ($splitDescCount -gt 4 -and $null -ne $SplitDescription[4]) {
                                         $howMakingLessLikelyLines = $SplitDescription[4].Split([Environment]::NewLine)
                                         $howMakingLessLikelyLinesCount = if ($null -ne $howMakingLessLikelyLines -and $howMakingLessLikelyLines -is [System.Array]) { $howMakingLessLikelyLines.Count } elseif ($null -ne $howMakingLessLikelyLines) { 1 } else { 0 }
-                                        if ($howMakingLessLikelyLinesCount -gt 1) { $howMakingLessLikely = $howMakingLessLikelyLines[1] }
+                                        if ($howMakingLessLikelyLinesCount -gt 0) {
+                                            $howMakingLessLikely = if ($howMakingLessLikelyLinesCount -gt 1 -and [string]::IsNullOrWhiteSpace($howMakingLessLikelyLines[0])) {
+                                                $howMakingLessLikelyLines[1]
+                                            } else {
+                                                $howMakingLessLikelyLines[0]
+                                            }
+                                            $howMakingLessLikely = $howMakingLessLikely -replace '<[^>]+>', '' -replace '&nbsp;', ' ' -replace '&amp;', '&' -replace '&lt;', '<' -replace '&gt;', '>' -replace '&quot;', '"' -replace '&#39;', "'"
+                                        }
                                     }
                                     if ($splitDescCount -gt 5 -and $null -ne $SplitDescription[5]) {
                                         $howCustomersCanMakeLessImpactfulLines = $SplitDescription[5].Split([Environment]::NewLine)
                                         $howCustomersCanMakeLessImpactfulLinesCount = if ($null -ne $howCustomersCanMakeLessImpactfulLines -and $howCustomersCanMakeLessImpactfulLines -is [System.Array]) { $howCustomersCanMakeLessImpactfulLines.Count } elseif ($null -ne $howCustomersCanMakeLessImpactfulLines) { 1 } else { 0 }
-                                        if ($howCustomersCanMakeLessImpactfulLinesCount -gt 1) { $howCustomersCanMakeLessImpactful = $howCustomersCanMakeLessImpactfulLines[1] }
+                                        if ($howCustomersCanMakeLessImpactfulLinesCount -gt 0) {
+                                            $howCustomersCanMakeLessImpactful = if ($howCustomersCanMakeLessImpactfulLinesCount -gt 1 -and [string]::IsNullOrWhiteSpace($howCustomersCanMakeLessImpactfulLines[0])) {
+                                                $howCustomersCanMakeLessImpactfulLines[1]
+                                            } else {
+                                                $howCustomersCanMakeLessImpactfulLines[0]
+                                            }
+                                            $howCustomersCanMakeLessImpactful = $howCustomersCanMakeLessImpactful -replace '<[^>]+>', '' -replace '&nbsp;', ' ' -replace '&amp;', '&' -replace '&lt;', '<' -replace '&gt;', '>' -replace '&quot;', '"' -replace '&#39;', "'"
+                                        }
                                     }
                                     
                                     $obj = [PSCustomObject]@{
@@ -1345,6 +1382,19 @@ Function Invoke-CachedARI-Patched {
                         $Exc.Add('How did we respond')
                         $Exc.Add('How are we making incidents like this less likely or less impactful')
                         $Exc.Add('How can customers make incidents like this less impactful')
+                        
+                        # Remove existing Outages sheet if it exists (from Start-ARIExcelJob) to avoid table conflicts
+                        try {
+                            $excelPackage = Open-ExcelPackage -Path $File
+                            $outagesSheet = $excelPackage.Workbook.Worksheets | Where-Object { $_.Name -eq 'Outages' }
+                            if ($null -ne $outagesSheet) {
+                                $excelPackage.Workbook.Worksheets.Delete('Outages')
+                                Write-Host "[UseExistingCache] Removed existing Outages sheet to recreate with proper formatting" -ForegroundColor Gray
+                            }
+                            Close-ExcelPackage -ExcelPackage $excelPackage
+                        } catch {
+                            Write-Debug "[UseExistingCache] Could not remove existing Outages sheet: $_"
+                        }
                         
                         $processedOutages | Select-Object $Exc | Export-Excel -Path $File -WorksheetName 'Outages' -AutoSize -TableName $TableName -MaxAutoSizeRows 100 -TableStyle $TableStyle -Numberformat '0' -Style $Style
                         
