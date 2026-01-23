@@ -66,6 +66,26 @@ function Start-ARIExtraReports {
 
     <################################################ POLICY #######################################################>
 
+    # Receive Advisory job results BEFORE Policy cleanup removes all jobs
+    $Adv = $null
+    if (!$SkipAdvisory.IsPresent) {
+        $AdvisoryJob = Get-Job -Name 'Advisory' -ErrorAction SilentlyContinue
+        if ($null -ne $AdvisoryJob) {
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Receiving Advisory job results before Policy cleanup.')
+            while (get-job -Name 'Advisory' | Where-Object { $_.State -eq 'Running' }) {
+                Start-Sleep -Seconds 1
+            }
+            $Adv = Receive-Job -Name 'Advisory' -ErrorAction SilentlyContinue
+            Remove-Job -Name 'Advisory' -ErrorAction SilentlyContinue | Out-Null
+            # Ensure Adv is an array for safe handling
+            if ($null -eq $Adv) {
+                $Adv = @()
+            } elseif ($Adv -isnot [System.Array]) {
+                $Adv = @($Adv)
+            }
+        }
+    }
+
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Checking if Should Generate Policy Sheet.')
     if (!$SkipPolicy.IsPresent) {
         if(get-job | Where-Object {$_.Name -eq 'Policy'})
@@ -75,7 +95,7 @@ function Start-ARIExtraReports {
                 # Aggressive memory cleanup BEFORE receiving Policy job results to free memory from previous operations
                 Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Running aggressive memory cleanup before receiving Policy job results.')
                 try {
-                    # Remove any other completed jobs first
+                    # Remove any other completed jobs first (Advisory was already received above)
                     Get-Job | Where-Object {$_.State -ne 'Running'} | Remove-Job -Force -ErrorAction SilentlyContinue
                     # Multiple aggressive GC collections
                     for ($i = 1; $i -le 5; $i++) {
@@ -140,31 +160,22 @@ function Start-ARIExtraReports {
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Checking if Should Generate Advisory Sheet.')
     if (!$SkipAdvisory.IsPresent) {
-        if (get-job | Where-Object {$_.Name -eq 'Advisory'})
-            {
-                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Generating Advisor Sheet.')
+        # Advisory job results were already received before Policy cleanup (see above)
+        if ($null -ne $Adv) {
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Generating Advisor Sheet.')
 
-                while (get-job -Name 'Advisory' | Where-Object { $_.State -eq 'Running' }) {
-                    Write-Progress -Id 1 -activity 'Processing Advisories' -Status "50% Complete." -PercentComplete 50
-                    Start-Sleep -Seconds 2
-                }
-
-                $Adv = Receive-Job -Name 'Advisory' -ErrorAction SilentlyContinue
-                Remove-Job -Name 'Advisory' -ErrorAction SilentlyContinue | Out-Null
-                
-                # Ensure Adv is an array for safe handling
-                if ($null -eq $Adv) {
-                    $Adv = @()
-                } elseif ($Adv -isnot [System.Array]) {
-                    $Adv = @($Adv)
-                }
-
+            # Only generate sheet if we have Advisory data
+            if ($Adv.Count -gt 0) {
                 Build-ARIAdvisoryReport -File $File -Adv $Adv -TableStyle $TableStyle
-
                 Write-Progress -Id 1 -activity 'Processing Advisories'  -Status "100% Complete." -Completed
-
-                Start-Sleep -Milliseconds 200
+            } else {
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'No Advisory data to report - skipping Advisory sheet.')
             }
+
+            Start-Sleep -Milliseconds 200
+        } else {
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'No Advisory data available - skipping Advisory sheet.')
+        }
     }
 
     <################################################################### SUBSCRIPTIONS ###################################################################>
