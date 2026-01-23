@@ -143,7 +143,10 @@ function Start-ARIExtraJobs {
     <######################################################### ADVISORY JOB ######################################################################>
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Checking If Should Run Advisory Job.')
-    if (!$SkipAdvisory.IsPresent) {
+    # Handle both switch parameter and boolean value for SkipAdvisory
+    $skipAdvisoryCheck = if ($SkipAdvisory -is [switch]) { $SkipAdvisory.IsPresent } else { $SkipAdvisory -eq $true }
+    
+    if (-not $skipAdvisoryCheck) {
         # Safely check Advisories (can be array or null)
         $hasAdvisories = $false
         if ($null -ne $Advisories) {
@@ -171,7 +174,11 @@ function Start-ARIExtraJobs {
                 
                 Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Starting Advisory Processing Job.')
                 Invoke-ARIAdvisoryJob -Advisories $Advisories -ARIModule $ARIModule -Automation $Automation
+            } else {
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'No Advisory data available - skipping Advisory job.')
             }
+    } else {
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'SkipAdvisory is set - skipping Advisory job.')
     }
 
     <######################################################### SUBSCRIPTIONS JOB ######################################################################>

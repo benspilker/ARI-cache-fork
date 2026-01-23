@@ -166,20 +166,40 @@ function Start-ARIExtraReports {
     if (-not $skipAdvisoryCheck) {
         # Advisory job results were already received before Policy cleanup (see above)
         if ($null -ne $Adv) {
-            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Generating Advisor Sheet.')
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Advisory data found: Count=' + $Adv.Count)
 
             # Only generate sheet if we have Advisory data
             if ($Adv.Count -gt 0) {
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Generating Advisor Sheet.')
                 Build-ARIAdvisoryReport -File $File -Adv $Adv -TableStyle $TableStyle
                 Write-Progress -Id 1 -activity 'Processing Advisories'  -Status "100% Complete." -Completed
             } else {
-                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'No Advisory data to report - skipping Advisory sheet.')
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'No Advisory data to report - skipping Advisory sheet (Adv.Count = 0).')
             }
 
             Start-Sleep -Milliseconds 200
         } else {
-            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'No Advisory data available - skipping Advisory sheet.')
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'No Advisory data available - skipping Advisory sheet (Adv is null).')
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Checking for Advisory job...')
+            $AdvisoryJobCheck = Get-Job -Name 'Advisory' -ErrorAction SilentlyContinue
+            if ($null -ne $AdvisoryJobCheck) {
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Advisory job found: State=' + $AdvisoryJobCheck.State)
+                # Try to receive it now
+                $Adv = Receive-Job -Name 'Advisory' -ErrorAction SilentlyContinue
+                if ($null -ne $Adv) {
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Received Advisory data: Count=' + $Adv.Count)
+                    if ($Adv.Count -gt 0) {
+                        Build-ARIAdvisoryReport -File $File -Adv $Adv -TableStyle $TableStyle
+                        Write-Progress -Id 1 -activity 'Processing Advisories'  -Status "100% Complete." -Completed
+                    }
+                }
+                Remove-Job -Name 'Advisory' -ErrorAction SilentlyContinue | Out-Null
+            } else {
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Advisory job not found - may have completed and been removed already.')
+            }
         }
+    } else {
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'SkipAdvisory is set - skipping Advisory sheet generation.')
     }
 
     <################################################################### SUBSCRIPTIONS ###################################################################>
