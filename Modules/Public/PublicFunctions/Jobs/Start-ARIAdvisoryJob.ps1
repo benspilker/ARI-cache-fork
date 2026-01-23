@@ -38,13 +38,40 @@ function Start-ARIAdvisoryJob {
                     $SavingsCurrency = if ($null -ne $data.extendedProperties -and -not [string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){$data.extendedProperties.savingsCurrency}Else{'USD'}
                     $Resource = $data.resourceMetadata.resourceId.split('/')
 
+                    # Safely extract resource information with bounds checking
+                    $Subscription = ''
+                    $ResourceGroup = ''
+                    $ResourceType = ''
+                    $ResourceName = ''
+                    
                     if ($Resource.Count -lt 4) {
+                        # Not enough segments - use impactedField/impactedValue
+                        $ResourceType = $data.impactedField
+                        $ResourceName = $data.impactedValue
+                        # Try to get subscription if available
+                        if ($Resource.Count -gt 2) {
+                            $Subscription = $Resource[2]
+                        }
+                    }
+                    elseif ($Resource.Count -lt 6) {
+                        # Has subscription but not resource group
+                        $Subscription = if ($Resource.Count -gt 2) { $Resource[2] } else { '' }
+                        $ResourceType = $data.impactedField
+                        $ResourceName = $data.impactedValue
+                    }
+                    elseif ($Resource.Count -lt 9) {
+                        # Has subscription and resource group but not full resource path
+                        $Subscription = if ($Resource.Count -gt 2) { $Resource[2] } else { '' }
+                        $ResourceGroup = if ($Resource.Count -gt 4) { $Resource[4] } else { '' }
                         $ResourceType = $data.impactedField
                         $ResourceName = $data.impactedValue
                     }
                     else {
-                        $ResourceType = ($Resource[6] + '/' + $Resource[7])
-                        $ResourceName = $Resource[8]
+                        # Full resource path available
+                        $Subscription = if ($Resource.Count -gt 2) { $Resource[2] } else { '' }
+                        $ResourceGroup = if ($Resource.Count -gt 4) { $Resource[4] } else { '' }
+                        $ResourceType = if ($Resource.Count -gt 7) { ($Resource[6] + '/' + $Resource[7]) } else { $data.impactedField }
+                        $ResourceName = if ($Resource.Count -gt 8) { $Resource[8] } else { $data.impactedValue }
                     }
 
                     if ($data.impactedField -eq $ResourceType) {
@@ -62,8 +89,8 @@ function Start-ARIAdvisoryJob {
                         }
 
                     $obj = @{
-                        'Subscription'           = $Resource[2];
-                        'Resource Group'         = $Resource[4];
+                        'Subscription'           = $Subscription;
+                        'Resource Group'         = $ResourceGroup;
                         'Resource Type'          = $ResourceType;
                         'Name'                   = $ResourceName;
                         'Detailed Type'          = $ImpactedField;
