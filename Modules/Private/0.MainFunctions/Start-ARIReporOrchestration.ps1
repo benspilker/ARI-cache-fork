@@ -39,10 +39,33 @@ Function Start-ARIReporOrchestration {
         Start-ARIExcelJob -ReportCache $ReportCache -TableStyle $TableStyle -File $File
         Write-Host "[DEBUG] Start-ARIReporOrchestration: Start-ARIExcelJob completed successfully" -ForegroundColor Magenta
     } catch {
-        $errorMsg = "Error in Start-ARIExcelJob: $($_.Exception.Message)"
-        $errorLine = if ($null -ne $_.InvocationInfo) { $_.InvocationInfo.ScriptLineNumber } else { "Unknown" }
-        $errorFunc = if ($null -ne $_.InvocationInfo -and $null -ne $_.InvocationInfo.FunctionName) { $_.InvocationInfo.FunctionName } else { "Unknown" }
-        $errorStack = if ($null -ne $_.ScriptStackTrace) { $_.ScriptStackTrace } else { "No stack trace available" }
+        # Safe error handling - check property existence before accessing
+        $errorMsg = if ($null -ne $_ -and $null -ne $_.Exception) { "Error in Start-ARIExcelJob: $($_.Exception.Message)" } else { "Error in Start-ARIExcelJob: Unknown error" }
+        
+        $errorLine = "Unknown"
+        $errorFunc = "Unknown"
+        $errorStack = "No stack trace available"
+        
+        try {
+            if ($null -ne $_ -and $null -ne $_.InvocationInfo) {
+                $errorLine = if ($null -ne $_.InvocationInfo.ScriptLineNumber) { $_.InvocationInfo.ScriptLineNumber } else { "Unknown" }
+                # Check if FunctionName property exists before accessing
+                if ($_.InvocationInfo.PSObject.Properties.Name -contains 'FunctionName') {
+                    $errorFunc = $_.InvocationInfo.FunctionName
+                }
+            }
+        } catch {
+            # Ignore errors accessing InvocationInfo
+        }
+        
+        try {
+            if ($null -ne $_ -and $null -ne $_.ScriptStackTrace) {
+                $errorStack = $_.ScriptStackTrace
+            }
+        } catch {
+            # Ignore errors accessing ScriptStackTrace
+        }
+        
         Write-Host "[ERROR] $errorMsg" -ForegroundColor Red
         Write-Host "[ERROR] Line: $errorLine, Function: $errorFunc" -ForegroundColor Red
         Write-Host "[ERROR] Stack: $errorStack" -ForegroundColor Red
@@ -269,10 +292,33 @@ Function Start-ARIReporOrchestration {
         Start-ARIExcelExtraData -File $File
         Write-Host "[DEBUG] Start-ARIReporOrchestration: Start-ARIExcelExtraData completed successfully" -ForegroundColor Magenta
     } catch {
-        $errorMsg = "Error in Start-ARIExcelExtraData: $($_.Exception.Message)"
-        $errorLine = if ($null -ne $_.InvocationInfo) { $_.InvocationInfo.ScriptLineNumber } else { "Unknown" }
-        $errorFunc = if ($null -ne $_.InvocationInfo -and $null -ne $_.InvocationInfo.FunctionName) { $_.InvocationInfo.FunctionName } else { "Unknown" }
-        $errorStack = if ($null -ne $_.ScriptStackTrace) { $_.ScriptStackTrace } else { "No stack trace available" }
+        # Safe error handling - check property existence before accessing
+        $errorMsg = if ($null -ne $_ -and $null -ne $_.Exception) { "Error in Start-ARIExcelExtraData: $($_.Exception.Message)" } else { "Error in Start-ARIExcelExtraData: Unknown error" }
+        
+        $errorLine = "Unknown"
+        $errorFunc = "Unknown"
+        $errorStack = "No stack trace available"
+        
+        try {
+            if ($null -ne $_ -and $null -ne $_.InvocationInfo) {
+                $errorLine = if ($null -ne $_.InvocationInfo.ScriptLineNumber) { $_.InvocationInfo.ScriptLineNumber } else { "Unknown" }
+                # Check if FunctionName property exists before accessing
+                if ($_.InvocationInfo.PSObject.Properties.Name -contains 'FunctionName') {
+                    $errorFunc = $_.InvocationInfo.FunctionName
+                }
+            }
+        } catch {
+            # Ignore errors accessing InvocationInfo
+        }
+        
+        try {
+            if ($null -ne $_ -and $null -ne $_.ScriptStackTrace) {
+                $errorStack = $_.ScriptStackTrace
+            }
+        } catch {
+            # Ignore errors accessing ScriptStackTrace
+        }
+        
         Write-Host "[ERROR] $errorMsg" -ForegroundColor Red
         Write-Host "[ERROR] Line: $errorLine, Function: $errorFunc" -ForegroundColor Red
         Write-Host "[ERROR] Stack: $errorStack" -ForegroundColor Red
@@ -303,10 +349,33 @@ Function Start-ARIReporOrchestration {
         Start-ARIExtraReports -File $File -Quotas $Quotas -SecurityCenter $SecurityCenter -SkipPolicy $SkipPolicy -SkipAdvisory $SkipAdvisory -IncludeCosts $IncludeCosts -TableStyle $TableStyle -Advisories $Advisories
         Write-Host "[DEBUG] Start-ARIReporOrchestration: Start-ARIExtraReports completed successfully" -ForegroundColor Magenta
     } catch {
-        $errorMsg = "Error in Start-ARIExtraReports: $($_.Exception.Message)"
-        $errorLine = if ($null -ne $_.InvocationInfo) { $_.InvocationInfo.ScriptLineNumber } else { "Unknown" }
-        $errorFunc = if ($null -ne $_.InvocationInfo -and $null -ne $_.InvocationInfo.FunctionName) { $_.InvocationInfo.FunctionName } else { "Unknown" }
-        $errorStack = if ($null -ne $_.ScriptStackTrace) { $_.ScriptStackTrace } else { "No stack trace available" }
+        # Safe error handling - check property existence before accessing
+        $errorMsg = if ($null -ne $_ -and $null -ne $_.Exception) { "Error in Start-ARIExtraReports: $($_.Exception.Message)" } else { "Error in Start-ARIExtraReports: Unknown error" }
+        
+        $errorLine = "Unknown"
+        $errorFunc = "Unknown"
+        $errorStack = "No stack trace available"
+        
+        try {
+            if ($null -ne $_ -and $null -ne $_.InvocationInfo) {
+                $errorLine = if ($null -ne $_.InvocationInfo.ScriptLineNumber) { $_.InvocationInfo.ScriptLineNumber } else { "Unknown" }
+                # Check if FunctionName property exists before accessing
+                if ($_.InvocationInfo.PSObject.Properties.Name -contains 'FunctionName') {
+                    $errorFunc = $_.InvocationInfo.FunctionName
+                }
+            }
+        } catch {
+            # Ignore errors accessing InvocationInfo
+        }
+        
+        try {
+            if ($null -ne $_ -and $null -ne $_.ScriptStackTrace) {
+                $errorStack = $_.ScriptStackTrace
+            }
+        } catch {
+            # Ignore errors accessing ScriptStackTrace
+        }
+        
         Write-Host "[ERROR] $errorMsg" -ForegroundColor Red
         Write-Host "[ERROR] Line: $errorLine, Function: $errorFunc" -ForegroundColor Red
         Write-Host "[ERROR] Stack: $errorStack" -ForegroundColor Red
