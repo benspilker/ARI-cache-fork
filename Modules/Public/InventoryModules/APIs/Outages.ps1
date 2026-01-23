@@ -33,7 +33,21 @@ If ($Task -eq 'Processing') {
     if($Outages)
         {
             $tmp = foreach ($1 in $Outages) {
-                $ImpactedSubs = $1.properties.impact.impactedRegions.impactedSubscriptions | Select-Object -Unique
+                # Safely extract impacted subscriptions
+                $ImpactedSubs = @()
+                if ($null -ne $1.properties -and $null -ne $1.properties.impact -and $null -ne $1.properties.impact.impactedRegions) {
+                    if ($null -ne $1.properties.impact.impactedRegions.impactedSubscriptions) {
+                        $ImpactedSubs = $1.properties.impact.impactedRegions.impactedSubscriptions | Select-Object -Unique
+                    }
+                }
+                # If no impacted subscriptions found, try to extract from outage ID or use empty array
+                if ($ImpactedSubs.Count -eq 0) {
+                    # Try to extract subscription ID from outage ID if possible
+                    if ($null -ne $1.id -and $1.id -match '/subscriptions/([^/]+)') {
+                        $ImpactedSubs = @($matches[1])
+                    }
+                }
+                
                 $ResUCount = 1
 
                 $Data = $1.properties
@@ -50,14 +64,62 @@ If ($Task -eq 'Processing') {
                         $Mitigation = [datetime]$Mitigation
                         $Mitigation = $Mitigation.ToString("yyyy-MM-dd HH:mm")
 
-                        $ImpactedService = if ($1.properties.impact.impactedService.count -gt 1) { $1.properties.impact.impactedService | ForEach-Object { $_ + ' ,' } }else { $1.properties.impact.impactedService}
+                        # Safely handle impactedService - check if it's an array before accessing .count
+                        $impactedServiceValue = $1.properties.impact.impactedService
+                        if ($null -ne $impactedServiceValue) {
+                            if ($impactedServiceValue -is [System.Array] -and $impactedServiceValue.Count -gt 1) {
+                                $ImpactedService = $impactedServiceValue | ForEach-Object { $_ + ' ,' }
+                            } else {
+                                $ImpactedService = $impactedServiceValue
+                            }
+                        } else {
+                            $ImpactedService = ''
+                        }
                         $ImpactedService = [string]$ImpactedService
                         $ImpactedService = if ($ImpactedService -like '* ,*') { $ImpactedService -replace ".$" }else { $ImpactedService }
 
-                        $HTML = New-Object -Com 'HTMLFile'
-                        $HTML.write([ref]$1.properties.description)
-                        $OutageDescription = $Html.body.innerText
-                        $SplitDescription = $OutageDescription.split('How can we make our incident communications more useful?').split('How can customers make incidents like this less impactful?').split('How are we making incidents like this less likely or less impactful?').split('How did we respond?').split('What went wrong and why?').split('What happened?')
+                        # Safely parse HTML description
+                        $OutageDescription = ''
+                        $SplitDescription = @('', '', '', '', '', '', '')
+                        try {
+                            $HTML = New-Object -Com 'HTMLFile'
+                            $HTML.write([ref]$1.properties.description)
+                            $OutageDescription = $Html.body.innerText
+                            # Split description into sections
+                            $SplitDescription = $OutageDescription.split('How can we make our incident communications more useful?').split('How can customers make incidents like this less impactful?').split('How are we making incidents like this less likely or less impactful?').split('How did we respond?').split('What went wrong and why?').split('What happened?')
+                        } catch {
+                            # If HTML parsing fails, use raw description
+                            $OutageDescription = $1.properties.description
+                            $SplitDescription = @('', $OutageDescription, '', '', '', '', '')
+                        }
+                        
+                        # Safely extract split description sections with bounds checking
+                        $whatHappened = ''
+                        $whatWentWrong = ''
+                        $howDidWeRespond = ''
+                        $howMakingLessLikely = ''
+                        $howCustomersCanMakeLessImpactful = ''
+                        
+                        if ($SplitDescription.Count -gt 1 -and $null -ne $SplitDescription[1]) {
+                            $whatHappenedLines = $SplitDescription[1].Split([Environment]::NewLine)
+                            if ($whatHappenedLines.Count -gt 1) { $whatHappened = $whatHappenedLines[1] }
+                        }
+                        if ($SplitDescription.Count -gt 2 -and $null -ne $SplitDescription[2]) {
+                            $whatWentWrongLines = $SplitDescription[2].Split([Environment]::NewLine)
+                            if ($whatWentWrongLines.Count -gt 1) { $whatWentWrong = $whatWentWrongLines[1] }
+                        }
+                        if ($SplitDescription.Count -gt 3 -and $null -ne $SplitDescription[3]) {
+                            $howDidWeRespondLines = $SplitDescription[3].Split([Environment]::NewLine)
+                            if ($howDidWeRespondLines.Count -gt 1) { $howDidWeRespond = $howDidWeRespondLines[1] }
+                        }
+                        if ($SplitDescription.Count -gt 4 -and $null -ne $SplitDescription[4]) {
+                            $howMakingLessLikelyLines = $SplitDescription[4].Split([Environment]::NewLine)
+                            if ($howMakingLessLikelyLines.Count -gt 1) { $howMakingLessLikely = $howMakingLessLikelyLines[1] }
+                        }
+                        if ($SplitDescription.Count -gt 5 -and $null -ne $SplitDescription[5]) {
+                            $howCustomersCanMakeLessImpactfulLines = $SplitDescription[5].Split([Environment]::NewLine)
+                            if ($howCustomersCanMakeLessImpactfulLines.Count -gt 1) { $howCustomersCanMakeLessImpactful = $howCustomersCanMakeLessImpactfulLines[1] }
+                        }
 
                         $obj = @{
                             'ID'                                                                  = $1.id;
@@ -70,11 +132,11 @@ If ($Task -eq 'Processing') {
                             'Impact Start Time'                                                   = $StartTime;
                             'Impact Mitigation Time'                                              = $Mitigation;
                             'Impacted Services'                                                   = $ImpactedService;
-                            'What happened'                                                       = ($SplitDescription[1]).Split([Environment]::NewLine)[1];
-                            'What went wrong and why'                                             = ($SplitDescription[2]).Split([Environment]::NewLine)[1];
-                            'How did we respond'                                                  = ($SplitDescription[3]).Split([Environment]::NewLine)[1];
-                            'How are we making incidents like this less likely or less impactful' = ($SplitDescription[4]).Split([Environment]::NewLine)[1];
-                            'How can customers make incidents like this less impactful'           = ($SplitDescription[5]).Split([Environment]::NewLine)[1];
+                            'What happened'                                                       = $whatHappened;
+                            'What went wrong and why'                                             = $whatWentWrong;
+                            'How did we respond'                                                  = $howDidWeRespond;
+                            'How are we making incidents like this less likely or less impactful' = $howMakingLessLikely;
+                            'How can customers make incidents like this less impactful'           = $howCustomersCanMakeLessImpactful;
                             'Resource U'                                                          = $ResUCount
                         }
                         $obj
