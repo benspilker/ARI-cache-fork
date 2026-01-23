@@ -67,8 +67,11 @@ function Start-ARIExtraReports {
     <################################################ POLICY #######################################################>
 
     # Receive Advisory job results BEFORE Policy cleanup removes all jobs
+    # Handle both switch parameter and boolean value for SkipAdvisory
+    $skipAdvisoryCheck = if ($SkipAdvisory -is [switch]) { $SkipAdvisory.IsPresent } else { $SkipAdvisory -eq $true }
+    
     $Adv = $null
-    if (!$SkipAdvisory.IsPresent) {
+    if (-not $skipAdvisoryCheck) {
         $AdvisoryJob = Get-Job -Name 'Advisory' -ErrorAction SilentlyContinue
         if ($null -ne $AdvisoryJob) {
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Receiving Advisory job results before Policy cleanup.')
@@ -159,7 +162,8 @@ function Start-ARIExtraReports {
     <################################################ ADVISOR #######################################################>
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Checking if Should Generate Advisory Sheet.')
-    if (!$SkipAdvisory.IsPresent) {
+    # Use the same skipAdvisoryCheck variable defined above
+    if (-not $skipAdvisoryCheck) {
         # Advisory job results were already received before Policy cleanup (see above)
         if ($null -ne $Adv) {
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Generating Advisor Sheet.')
