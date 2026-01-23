@@ -70,7 +70,8 @@ function Start-ARIExtraReports {
     # Handle both switch parameter and boolean value for SkipAdvisory
     $skipAdvisoryCheck = if ($SkipAdvisory -is [switch]) { $SkipAdvisory.IsPresent } else { $SkipAdvisory -eq $true }
     
-    $Adv = $null
+    # Store Advisory data in script scope to prevent it from being cleared by memory cleanup
+    $script:Adv = $null
     if (-not $skipAdvisoryCheck) {
         $AdvisoryJob = Get-Job -Name 'Advisory' -ErrorAction SilentlyContinue
         if ($null -ne $AdvisoryJob) {
@@ -78,14 +79,17 @@ function Start-ARIExtraReports {
             while (get-job -Name 'Advisory' | Where-Object { $_.State -eq 'Running' }) {
                 Start-Sleep -Seconds 1
             }
-            $Adv = Receive-Job -Name 'Advisory' -ErrorAction SilentlyContinue
+            $script:Adv = Receive-Job -Name 'Advisory' -ErrorAction SilentlyContinue
             Remove-Job -Name 'Advisory' -ErrorAction SilentlyContinue | Out-Null
             # Ensure Adv is an array for safe handling
-            if ($null -eq $Adv) {
-                $Adv = @()
-            } elseif ($Adv -isnot [System.Array]) {
-                $Adv = @($Adv)
+            if ($null -eq $script:Adv) {
+                $script:Adv = @()
+            } elseif ($script:Adv -isnot [System.Array]) {
+                $script:Adv = @($script:Adv)
             }
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Advisory data received and stored in script scope: Count=' + $script:Adv.Count)
+        } else {
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Advisory job not found when trying to receive results.')
         }
     }
 
@@ -164,8 +168,37 @@ function Start-ARIExtraReports {
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Checking if Should Generate Advisory Sheet.')
     # Use the same skipAdvisoryCheck variable defined above
     if (-not $skipAdvisoryCheck) {
-        # Advisory job results were already received before Policy cleanup (see above)
+        # Advisory job results were already received before Policy cleanup and stored in script scope (see above)
+        # Use script-scoped variable to ensure it wasn't cleared by memory cleanup
+        $Adv = $script:Adv
+        if ($null -eq $Adv) {
+            # Fallback: try to receive from job if script-scoped variable is null
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Script-scoped Advisory data is null - checking for Advisory job...')
+            $AdvisoryJobCheck = Get-Job -Name 'Advisory' -ErrorAction SilentlyContinue
+            if ($null -ne $AdvisoryJobCheck) {
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Advisory job found: State=' + $AdvisoryJobCheck.State)
+                # Try to receive it now
+                $Adv = Receive-Job -Name 'Advisory' -ErrorAction SilentlyContinue
+                if ($null -ne $Adv) {
+                    # Store in script scope for safety
+                    $script:Adv = $Adv
+                    if ($script:Adv -isnot [System.Array]) {
+                        $script:Adv = @($script:Adv)
+                    }
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Received Advisory data from job: Count=' + $script:Adv.Count)
+                }
+                Remove-Job -Name 'Advisory' -ErrorAction SilentlyContinue | Out-Null
+            } else {
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Advisory job not found - may have completed and been removed already.')
+            }
+        }
+        
+        # Now check if we have Advisory data (either from script scope or just received)
         if ($null -ne $Adv) {
+            # Ensure Adv is an array
+            if ($Adv -isnot [System.Array]) {
+                $Adv = @($Adv)
+            }
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Advisory data found: Count=' + $Adv.Count)
 
             # Only generate sheet if we have Advisory data
@@ -180,23 +213,6 @@ function Start-ARIExtraReports {
             Start-Sleep -Milliseconds 200
         } else {
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'No Advisory data available - skipping Advisory sheet (Adv is null).')
-            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Checking for Advisory job...')
-            $AdvisoryJobCheck = Get-Job -Name 'Advisory' -ErrorAction SilentlyContinue
-            if ($null -ne $AdvisoryJobCheck) {
-                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Advisory job found: State=' + $AdvisoryJobCheck.State)
-                # Try to receive it now
-                $Adv = Receive-Job -Name 'Advisory' -ErrorAction SilentlyContinue
-                if ($null -ne $Adv) {
-                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Received Advisory data: Count=' + $Adv.Count)
-                    if ($Adv.Count -gt 0) {
-                        Build-ARIAdvisoryReport -File $File -Adv $Adv -TableStyle $TableStyle
-                        Write-Progress -Id 1 -activity 'Processing Advisories'  -Status "100% Complete." -Completed
-                    }
-                }
-                Remove-Job -Name 'Advisory' -ErrorAction SilentlyContinue | Out-Null
-            } else {
-                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Advisory job not found - may have completed and been removed already.')
-            }
         }
     } else {
         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'SkipAdvisory is set - skipping Advisory sheet generation.')
