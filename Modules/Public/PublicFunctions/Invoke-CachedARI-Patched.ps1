@@ -1020,7 +1020,7 @@ Function Invoke-CachedARI-Patched {
         $ReportingRunTime = [System.Diagnostics.Stopwatch]::StartNew()
 
         try {
-            Start-ARIReporOrchestration -ReportCache $ReportCache -SecurityCenter $SecurityCenter -File $File -Quotas $Quotas -SkipPolicy $SkipPolicy -SkipAdvisory $SkipAdvisory -IncludeCosts $IncludeCosts -Automation $Automation -TableStyle $TableStyle
+            Start-ARIReporOrchestration -ReportCache $ReportCache -SecurityCenter $SecurityCenter -File $File -Quotas $Quotas -SkipPolicy $SkipPolicy -SkipAdvisory $SkipAdvisory -IncludeCosts $IncludeCosts -Automation $Automation -TableStyle $TableStyle -Advisories $Advisories
         } catch {
             $errorDetails = $_.Exception.Message
             $errorLine = $_.InvocationInfo.ScriptLineNumber

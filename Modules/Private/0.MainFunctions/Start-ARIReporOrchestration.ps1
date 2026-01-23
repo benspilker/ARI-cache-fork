@@ -26,7 +26,8 @@ Function Start-ARIReporOrchestration {
     $SkipAdvisory,
     $Automation,
     $TableStyle,
-    $IncludeCosts)
+    $IncludeCosts,
+    $Advisories)
 
     Write-Progress -activity 'Azure Inventory' -Status "65% Complete." -PercentComplete 65 -CurrentOperation "Starting the Report Phase.."
 
@@ -103,7 +104,7 @@ Function Start-ARIReporOrchestration {
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Starting Default Data Reporting.')
     Write-Host "[DEBUG] Start-ARIReporOrchestration: About to call Start-ARIExtraReports" -ForegroundColor Magenta
     try {
-        Start-ARIExtraReports -File $File -Quotas $Quotas -SecurityCenter $SecurityCenter -SkipPolicy $SkipPolicy -SkipAdvisory $SkipAdvisory -IncludeCosts $IncludeCosts -TableStyle $TableStyle
+        Start-ARIExtraReports -File $File -Quotas $Quotas -SecurityCenter $SecurityCenter -SkipPolicy $SkipPolicy -SkipAdvisory $SkipAdvisory -IncludeCosts $IncludeCosts -TableStyle $TableStyle -Advisories $Advisories
         Write-Host "[DEBUG] Start-ARIReporOrchestration: Start-ARIExtraReports completed successfully" -ForegroundColor Magenta
     } catch {
         $errorMsg = "Error in Start-ARIExtraReports: $($_.Exception.Message)"

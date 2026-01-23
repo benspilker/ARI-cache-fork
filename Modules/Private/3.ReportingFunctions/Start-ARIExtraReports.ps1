@@ -18,7 +18,7 @@ Authors: Claudio Merola
 #>
 
 function Start-ARIExtraReports {
-    Param($File, $Quotas, $SecurityCenter, $SkipPolicy, $SkipAdvisory, $IncludeCosts, $TableStyle)
+    Param($File, $Quotas, $SecurityCenter, $SkipPolicy, $SkipAdvisory, $IncludeCosts, $TableStyle, $Advisories)
 
     Write-Progress -activity 'Azure Inventory' -Status "70% Complete." -PercentComplete 70 -CurrentOperation "Reporting Extra Resources.."
 
@@ -193,7 +193,49 @@ function Start-ARIExtraReports {
             }
         }
         
-        # Now check if we have Advisory data (either from script scope or just received)
+        # Fallback: if still no data, process Advisories parameter directly
+        if ($null -eq $Adv -and $null -ne $Advisories) {
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Advisory job not available - processing Advisories parameter directly...')
+            # Ensure Advisories is an array
+            $advisoriesArray = if ($null -eq $Advisories) {
+                @()
+            } elseif ($Advisories -isnot [System.Array]) {
+                @($Advisories)
+            } else {
+                $Advisories
+            }
+            
+            if ($advisoriesArray.Count -gt 0) {
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Processing Advisories directly using Start-ARIAdvisoryJob (Count=' + $advisoriesArray.Count + ')')
+                # Load Start-ARIAdvisoryJob function if available
+                # Path: From Modules/Private/3.ReportingFunctions/ to Modules/Public/PublicFunctions/Jobs/
+                # Go up 2 levels: ..\..\ then Public\PublicFunctions\Jobs\Start-ARIAdvisoryJob.ps1
+                $ariModulePath = Join-Path (Join-Path (Split-Path (Split-Path $PSScriptRoot -Parent) -Parent) "Public\PublicFunctions\Jobs") "Start-ARIAdvisoryJob.ps1"
+                if (Test-Path $ariModulePath) {
+                    . $ariModulePath
+                    $Adv = Start-ARIAdvisoryJob -Advisories $advisoriesArray
+                    # Store in script scope
+                    $script:Adv = $Adv
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Processed Advisory data directly: Count=' + $Adv.Count)
+                } else {
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Warning: Start-ARIAdvisoryJob.ps1 not found at: ' + $ariModulePath)
+                    # Try alternative path (if PSScriptRoot is not set correctly)
+                    $altPath = Join-Path (Join-Path (Split-Path $PSScriptRoot -Parent -Parent) "Public\PublicFunctions\Jobs") "Start-ARIAdvisoryJob.ps1"
+                    if (Test-Path $altPath) {
+                        . $altPath
+                        $Adv = Start-ARIAdvisoryJob -Advisories $advisoriesArray
+                        $script:Adv = $Adv
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Processed Advisory data directly using alternative path: Count=' + $Adv.Count)
+                    } else {
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Warning: Start-ARIAdvisoryJob.ps1 not found at alternative path: ' + $altPath)
+                    }
+                }
+            } else {
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Advisories parameter is empty (Count=0)')
+            }
+        }
+        
+        # Now check if we have Advisory data (from any source: script scope, job, or direct processing)
         if ($null -ne $Adv) {
             # Ensure Adv is an array
             if ($Adv -isnot [System.Array]) {
