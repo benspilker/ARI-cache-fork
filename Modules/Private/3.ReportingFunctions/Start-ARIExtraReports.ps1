@@ -235,49 +235,69 @@ function Start-ARIExtraReports {
                             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Attempting inline Advisory processing...')
                             $Adv = @()
                             foreach ($advItem in $advisoriesArray) {
-                                if ($null -ne $advItem -and $null -ne $advItem.PROPERTIES) {
-                                    $data = $advItem.PROPERTIES
-                                    if ($data.resourceMetadata.resourceId) {
-                                        $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
-                                        $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
-                                        $Resource = $data.resourceMetadata.resourceId.split('/')
-                                        if ($Resource.Count -lt 4) {
-                                            $ResourceType = $data.impactedField
-                                            $ResourceName = $data.impactedValue
-                                        } else {
-                                            $ResourceType = ($Resource[6] + '/' + $Resource[7])
-                                            $ResourceName = $Resource[8]
+                                try {
+                                    if ($null -ne $advItem -and $null -ne $advItem.PROPERTIES) {
+                                        $data = $advItem.PROPERTIES
+                                        if ($null -ne $data -and $null -ne $data.resourceMetadata -and $null -ne $data.resourceMetadata.resourceId) {
+                                            $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
+                                            $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
+                                            $Resource = $data.resourceMetadata.resourceId.split('/')
+                                            # Add bounds checking for array access
+                                            if ($Resource.Count -lt 4) {
+                                                $ResourceType = $data.impactedField
+                                                $ResourceName = $data.impactedValue
+                                                $Subscription = ''
+                                                $ResourceGroup = ''
+                                            } elseif ($Resource.Count -lt 5) {
+                                                $Subscription = if ($Resource.Count -gt 2) { $Resource[2] } else { '' }
+                                                $ResourceGroup = ''
+                                                $ResourceType = $data.impactedField
+                                                $ResourceName = $data.impactedValue
+                                            } elseif ($Resource.Count -lt 9) {
+                                                $Subscription = if ($Resource.Count -gt 2) { $Resource[2] } else { '' }
+                                                $ResourceGroup = if ($Resource.Count -gt 4) { $Resource[4] } else { '' }
+                                                $ResourceType = $data.impactedField
+                                                $ResourceName = $data.impactedValue
+                                            } else {
+                                                $Subscription = if ($Resource.Count -gt 2) { $Resource[2] } else { '' }
+                                                $ResourceGroup = if ($Resource.Count -gt 4) { $Resource[4] } else { '' }
+                                                $ResourceType = if ($Resource.Count -gt 7) { ($Resource[6] + '/' + $Resource[7]) } else { $data.impactedField }
+                                                $ResourceName = if ($Resource.Count -gt 8) { $Resource[8] } else { $data.impactedValue }
+                                            }
+                                            if ($null -ne $data.impactedField -and $data.impactedField -eq $ResourceType) {
+                                                $ImpactedField = ''
+                                            } else {
+                                                $ImpactedField = $data.impactedField
+                                            }
+                                            if ($null -ne $data.impactedValue -and $data.impactedValue -eq $ResourceName) {
+                                                $ImpactedValue = ''
+                                            } else {
+                                                $ImpactedValue = $data.impactedValue
+                                            }
+                                            $obj = @{
+                                                'Subscription'           = $Subscription;
+                                                'Resource Group'         = $ResourceGroup;
+                                                'Resource Type'          = $ResourceType;
+                                                'Name'                   = $ResourceName;
+                                                'Detailed Type'          = $ImpactedField;
+                                                'Detailed Name'          = $ImpactedValue;
+                                                'Category'               = $data.category;
+                                                'Impact'                 = $data.impact;
+                                                'Description'            = if ($null -ne $data.shortDescription) { $data.shortDescription.problem } else { '' };
+                                                'SKU'                    = $data.extendedProperties.sku;
+                                                'Term'                   = $data.extendedProperties.term;
+                                                'Look-back Period'       = $data.extendedProperties.lookbackPeriod;
+                                                'Quantity'               = $data.extendedProperties.qty;
+                                                'Savings Currency'       = $SavingsCurrency;
+                                                'Annual Savings'         = "=$Savings";
+                                                'Savings Region'         = $data.extendedProperties.region
+                                            }
+                                            $Adv += $obj
                                         }
-                                        if ($data.impactedField -eq $ResourceType) {
-                                            $ImpactedField = ''
-                                        } else {
-                                            $ImpactedField = $data.impactedField
-                                        }
-                                        if ($data.impactedValue -eq $ResourceName) {
-                                            $ImpactedValue = ''
-                                        } else {
-                                            $ImpactedValue = $data.impactedValue
-                                        }
-                                        $obj = @{
-                                            'Subscription'           = $Resource[2];
-                                            'Resource Group'         = $Resource[4];
-                                            'Resource Type'          = $ResourceType;
-                                            'Name'                   = $ResourceName;
-                                            'Detailed Type'          = $ImpactedField;
-                                            'Detailed Name'          = $ImpactedValue;
-                                            'Category'               = $data.category;
-                                            'Impact'                 = $data.impact;
-                                            'Description'            = $data.shortDescription.problem;
-                                            'SKU'                    = $data.extendedProperties.sku;
-                                            'Term'                   = $data.extendedProperties.term;
-                                            'Look-back Period'       = $data.extendedProperties.lookbackPeriod;
-                                            'Quantity'               = $data.extendedProperties.qty;
-                                            'Savings Currency'       = $SavingsCurrency;
-                                            'Annual Savings'         = "=$Savings";
-                                            'Savings Region'         = $data.extendedProperties.region
-                                        }
-                                        $Adv += $obj
                                     }
+                                } catch {
+                                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error processing Advisory item: ' + $_.Exception.Message)
+                                    continue
                                 }
                             }
                             $script:Adv = $Adv
@@ -289,49 +309,69 @@ function Start-ARIExtraReports {
                         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Attempting inline Advisory processing...')
                         $Adv = @()
                         foreach ($advItem in $advisoriesArray) {
-                            if ($null -ne $advItem -and $null -ne $advItem.PROPERTIES) {
-                                $data = $advItem.PROPERTIES
-                                if ($data.resourceMetadata.resourceId) {
-                                    $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
-                                    $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
-                                    $Resource = $data.resourceMetadata.resourceId.split('/')
-                                    if ($Resource.Count -lt 4) {
-                                        $ResourceType = $data.impactedField
-                                        $ResourceName = $data.impactedValue
-                                    } else {
-                                        $ResourceType = ($Resource[6] + '/' + $Resource[7])
-                                        $ResourceName = $Resource[8]
+                            try {
+                                if ($null -ne $advItem -and $null -ne $advItem.PROPERTIES) {
+                                    $data = $advItem.PROPERTIES
+                                    if ($null -ne $data -and $null -ne $data.resourceMetadata -and $null -ne $data.resourceMetadata.resourceId) {
+                                        $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
+                                        $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
+                                        $Resource = $data.resourceMetadata.resourceId.split('/')
+                                        # Add bounds checking for array access
+                                        if ($Resource.Count -lt 4) {
+                                            $ResourceType = $data.impactedField
+                                            $ResourceName = $data.impactedValue
+                                            $Subscription = ''
+                                            $ResourceGroup = ''
+                                        } elseif ($Resource.Count -lt 5) {
+                                            $Subscription = if ($Resource.Count -gt 2) { $Resource[2] } else { '' }
+                                            $ResourceGroup = ''
+                                            $ResourceType = $data.impactedField
+                                            $ResourceName = $data.impactedValue
+                                        } elseif ($Resource.Count -lt 9) {
+                                            $Subscription = if ($Resource.Count -gt 2) { $Resource[2] } else { '' }
+                                            $ResourceGroup = if ($Resource.Count -gt 4) { $Resource[4] } else { '' }
+                                            $ResourceType = $data.impactedField
+                                            $ResourceName = $data.impactedValue
+                                        } else {
+                                            $Subscription = if ($Resource.Count -gt 2) { $Resource[2] } else { '' }
+                                            $ResourceGroup = if ($Resource.Count -gt 4) { $Resource[4] } else { '' }
+                                            $ResourceType = if ($Resource.Count -gt 7) { ($Resource[6] + '/' + $Resource[7]) } else { $data.impactedField }
+                                            $ResourceName = if ($Resource.Count -gt 8) { $Resource[8] } else { $data.impactedValue }
+                                        }
+                                        if ($null -ne $data.impactedField -and $data.impactedField -eq $ResourceType) {
+                                            $ImpactedField = ''
+                                        } else {
+                                            $ImpactedField = $data.impactedField
+                                        }
+                                        if ($null -ne $data.impactedValue -and $data.impactedValue -eq $ResourceName) {
+                                            $ImpactedValue = ''
+                                        } else {
+                                            $ImpactedValue = $data.impactedValue
+                                        }
+                                        $obj = @{
+                                            'Subscription'           = $Subscription;
+                                            'Resource Group'         = $ResourceGroup;
+                                            'Resource Type'          = $ResourceType;
+                                            'Name'                   = $ResourceName;
+                                            'Detailed Type'          = $ImpactedField;
+                                            'Detailed Name'          = $ImpactedValue;
+                                            'Category'               = $data.category;
+                                            'Impact'                 = $data.impact;
+                                            'Description'            = if ($null -ne $data.shortDescription) { $data.shortDescription.problem } else { '' };
+                                            'SKU'                    = $data.extendedProperties.sku;
+                                            'Term'                   = $data.extendedProperties.term;
+                                            'Look-back Period'       = $data.extendedProperties.lookbackPeriod;
+                                            'Quantity'               = $data.extendedProperties.qty;
+                                            'Savings Currency'       = $SavingsCurrency;
+                                            'Annual Savings'         = "=$Savings";
+                                            'Savings Region'         = $data.extendedProperties.region
+                                        }
+                                        $Adv += $obj
                                     }
-                                    if ($data.impactedField -eq $ResourceType) {
-                                        $ImpactedField = ''
-                                    } else {
-                                        $ImpactedField = $data.impactedField
-                                    }
-                                    if ($data.impactedValue -eq $ResourceName) {
-                                        $ImpactedValue = ''
-                                    } else {
-                                        $ImpactedValue = $data.impactedValue
-                                    }
-                                    $obj = @{
-                                        'Subscription'           = $Resource[2];
-                                        'Resource Group'         = $Resource[4];
-                                        'Resource Type'          = $ResourceType;
-                                        'Name'                   = $ResourceName;
-                                        'Detailed Type'          = $ImpactedField;
-                                        'Detailed Name'          = $ImpactedValue;
-                                        'Category'               = $data.category;
-                                        'Impact'                 = $data.impact;
-                                        'Description'            = $data.shortDescription.problem;
-                                        'SKU'                    = $data.extendedProperties.sku;
-                                        'Term'                   = $data.extendedProperties.term;
-                                        'Look-back Period'       = $data.extendedProperties.lookbackPeriod;
-                                        'Quantity'               = $data.extendedProperties.qty;
-                                        'Savings Currency'       = $SavingsCurrency;
-                                        'Annual Savings'         = "=$Savings";
-                                        'Savings Region'         = $data.extendedProperties.region
-                                    }
-                                    $Adv += $obj
                                 }
+                            } catch {
+                                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error processing Advisory item: ' + $_.Exception.Message)
+                                continue
                             }
                         }
                         $script:Adv = $Adv
@@ -344,49 +384,69 @@ function Start-ARIExtraReports {
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Attempting inline Advisory processing as fallback...')
                     $Adv = @()
                     foreach ($advItem in $advisoriesArray) {
-                        if ($null -ne $advItem -and $null -ne $advItem.PROPERTIES) {
-                            $data = $advItem.PROPERTIES
-                            if ($data.resourceMetadata.resourceId) {
-                                $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
-                                $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
-                                $Resource = $data.resourceMetadata.resourceId.split('/')
-                                if ($Resource.Count -lt 4) {
-                                    $ResourceType = $data.impactedField
-                                    $ResourceName = $data.impactedValue
-                                } else {
-                                    $ResourceType = ($Resource[6] + '/' + $Resource[7])
-                                    $ResourceName = $Resource[8]
+                        try {
+                            if ($null -ne $advItem -and $null -ne $advItem.PROPERTIES) {
+                                $data = $advItem.PROPERTIES
+                                if ($null -ne $data -and $null -ne $data.resourceMetadata -and $null -ne $data.resourceMetadata.resourceId) {
+                                    $Savings = if([string]::IsNullOrEmpty($data.extendedProperties.annualSavingsAmount)){0}Else{$data.extendedProperties.annualSavingsAmount}
+                                    $SavingsCurrency = if([string]::IsNullOrEmpty($data.extendedProperties.savingsCurrency)){'USD'}Else{$data.extendedProperties.savingsCurrency}
+                                    $Resource = $data.resourceMetadata.resourceId.split('/')
+                                    # Add bounds checking for array access
+                                    if ($Resource.Count -lt 4) {
+                                        $ResourceType = $data.impactedField
+                                        $ResourceName = $data.impactedValue
+                                        $Subscription = ''
+                                        $ResourceGroup = ''
+                                    } elseif ($Resource.Count -lt 5) {
+                                        $Subscription = if ($Resource.Count -gt 2) { $Resource[2] } else { '' }
+                                        $ResourceGroup = ''
+                                        $ResourceType = $data.impactedField
+                                        $ResourceName = $data.impactedValue
+                                    } elseif ($Resource.Count -lt 9) {
+                                        $Subscription = if ($Resource.Count -gt 2) { $Resource[2] } else { '' }
+                                        $ResourceGroup = if ($Resource.Count -gt 4) { $Resource[4] } else { '' }
+                                        $ResourceType = $data.impactedField
+                                        $ResourceName = $data.impactedValue
+                                    } else {
+                                        $Subscription = if ($Resource.Count -gt 2) { $Resource[2] } else { '' }
+                                        $ResourceGroup = if ($Resource.Count -gt 4) { $Resource[4] } else { '' }
+                                        $ResourceType = if ($Resource.Count -gt 7) { ($Resource[6] + '/' + $Resource[7]) } else { $data.impactedField }
+                                        $ResourceName = if ($Resource.Count -gt 8) { $Resource[8] } else { $data.impactedValue }
+                                    }
+                                    if ($null -ne $data.impactedField -and $data.impactedField -eq $ResourceType) {
+                                        $ImpactedField = ''
+                                    } else {
+                                        $ImpactedField = $data.impactedField
+                                    }
+                                    if ($null -ne $data.impactedValue -and $data.impactedValue -eq $ResourceName) {
+                                        $ImpactedValue = ''
+                                    } else {
+                                        $ImpactedValue = $data.impactedValue
+                                    }
+                                    $obj = @{
+                                        'Subscription'           = $Subscription;
+                                        'Resource Group'         = $ResourceGroup;
+                                        'Resource Type'          = $ResourceType;
+                                        'Name'                   = $ResourceName;
+                                        'Detailed Type'          = $ImpactedField;
+                                        'Detailed Name'          = $ImpactedValue;
+                                        'Category'               = $data.category;
+                                        'Impact'                 = $data.impact;
+                                        'Description'            = if ($null -ne $data.shortDescription) { $data.shortDescription.problem } else { '' };
+                                        'SKU'                    = $data.extendedProperties.sku;
+                                        'Term'                   = $data.extendedProperties.term;
+                                        'Look-back Period'       = $data.extendedProperties.lookbackPeriod;
+                                        'Quantity'               = $data.extendedProperties.qty;
+                                        'Savings Currency'       = $SavingsCurrency;
+                                        'Annual Savings'         = "=$Savings";
+                                        'Savings Region'         = $data.extendedProperties.region
+                                    }
+                                    $Adv += $obj
                                 }
-                                if ($data.impactedField -eq $ResourceType) {
-                                    $ImpactedField = ''
-                                } else {
-                                    $ImpactedField = $data.impactedField
-                                }
-                                if ($data.impactedValue -eq $ResourceName) {
-                                    $ImpactedValue = ''
-                                } else {
-                                    $ImpactedValue = $data.impactedValue
-                                }
-                                $obj = @{
-                                    'Subscription'           = $Resource[2];
-                                    'Resource Group'         = $Resource[4];
-                                    'Resource Type'          = $ResourceType;
-                                    'Name'                   = $ResourceName;
-                                    'Detailed Type'          = $ImpactedField;
-                                    'Detailed Name'          = $ImpactedValue;
-                                    'Category'               = $data.category;
-                                    'Impact'                 = $data.impact;
-                                    'Description'            = $data.shortDescription.problem;
-                                    'SKU'                    = $data.extendedProperties.sku;
-                                    'Term'                   = $data.extendedProperties.term;
-                                    'Look-back Period'       = $data.extendedProperties.lookbackPeriod;
-                                    'Quantity'               = $data.extendedProperties.qty;
-                                    'Savings Currency'       = $SavingsCurrency;
-                                    'Annual Savings'         = "=$Savings";
-                                    'Savings Region'         = $data.extendedProperties.region
-                                }
-                                $Adv += $obj
                             }
+                        } catch {
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error processing Advisory item: ' + $_.Exception.Message)
+                            continue
                         }
                     }
                     $script:Adv = $Adv
