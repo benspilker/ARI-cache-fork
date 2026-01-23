@@ -849,6 +849,49 @@ Function Invoke-CachedARI-Patched {
                             }
                             if ($resourceHealthCount -gt 0) {
                                 Write-Host "[UseExistingCache] Added $resourceHealthCount Resource Health event(s) to Resources for Outages processing" -ForegroundColor Green
+                                
+                                # CRITICAL FIX: Save Resource Health events to APIs.json cache file
+                                # Start-ARIExcelJob reads from cache files, not from $Resources array
+                                # Outages.ps1 expects $Resources parameter, but Start-ARIExcelJob passes $null
+                                # Solution: Save Resource Health events to APIs.json so Start-ARIExcelJob can find them
+                                try {
+                                    $apisJsonPath = Join-Path $ReportCache "APIs.json"
+                                    $apisData = @{}
+                                    
+                                    # Load existing APIs.json if it exists
+                                    if (Test-Path $apisJsonPath) {
+                                        try {
+                                            $existingContent = Get-Content $apisJsonPath -Raw | ConvertFrom-Json
+                                            if ($existingContent) {
+                                                $apisData = $existingContent
+                                            }
+                                        } catch {
+                                            Write-Debug "[UseExistingCache] Could not parse existing APIs.json, creating new one"
+                                        }
+                                    }
+                                    
+                                    # Add Resource Health events to APIs.json under "Outages" key
+                                    # Start-ARIExcelJob looks for cache file matching folder name (APIs folder -> APIs.json)
+                                    # Then looks for property matching module name (Outages.ps1 -> "Outages" property)
+                                    # Outages.ps1 receives this as $SmaResources when Task='Reporting'
+                                    $resourceHealthArray = @()
+                                    foreach ($event in $Resources | Where-Object { $_.TYPE -eq 'Microsoft.ResourceHealth/events' }) {
+                                        $resourceHealthArray += $event
+                                    }
+                                    
+                                    if ($resourceHealthArray.Count -gt 0) {
+                                        # Ensure apisData is a hashtable/PSCustomObject
+                                        if ($apisData -isnot [hashtable] -and $apisData -isnot [PSCustomObject]) {
+                                            $apisData = @{}
+                                        }
+                                        $apisData.Outages = $resourceHealthArray
+                                        $apisJsonContent = $apisData | ConvertTo-Json -Depth 20
+                                        Set-Content -Path $apisJsonPath -Value $apisJsonContent -ErrorAction Stop
+                                        Write-Host "[UseExistingCache] Saved $($resourceHealthArray.Count) Resource Health event(s) to APIs.json cache file (key: Outages)" -ForegroundColor Green
+                                    }
+                                } catch {
+                                    Write-Host "[UseExistingCache] Warning: Failed to save Resource Health events to APIs.json: $_" -ForegroundColor Yellow
+                                }
                             }
                         }
                         
