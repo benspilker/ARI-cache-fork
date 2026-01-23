@@ -54,11 +54,34 @@ function Start-ARIPolicyJob {
 
     $tmp = foreach ($1 in $policyAssignments)
         {
-            if(![string]::IsNullOrEmpty($1.policySetDefinitionId))
+            # Safely check if policySetDefinitionId property exists and is not null/empty
+            $policySetDefId = $null
+            if ($null -ne $1) {
+                try {
+                    if ($1 -is [PSCustomObject]) {
+                        # Check if property exists using PSObject.Properties
+                        if ($1.PSObject.Properties['policySetDefinitionId']) {
+                            $policySetDefId = $1.policySetDefinitionId
+                        }
+                    } elseif ($1 -is [System.Collections.Hashtable] -or $1 -is [System.Collections.IDictionary]) {
+                        if ($1.ContainsKey('policySetDefinitionId')) {
+                            $policySetDefId = $1['policySetDefinitionId']
+                        }
+                    } else {
+                        # Try direct access as fallback
+                        $policySetDefId = $1.policySetDefinitionId
+                    }
+                } catch {
+                    # Property doesn't exist or access failed
+                    $policySetDefId = $null
+                }
+            }
+            
+            if(![string]::IsNullOrEmpty($policySetDefId))
                 {
                     $TempPolDef = foreach ($PolDe in $PolicySetDef)
                         {
-                            if ($PolDe.id -eq $1.policySetDefinitionId)
+                            if ($PolDe.id -eq $policySetDefId)
                                 {
                                     $PolDe.properties.displayName
                                 }
@@ -70,8 +93,13 @@ function Start-ARIPolicyJob {
                         $TempPolDef = @($TempPolDef)
                     }
                     $Initiative = if($TempPolDef.Count -gt 1){$TempPolDef[0]}else{$TempPolDef}
-                    $InitNonCompRes = $1.results.nonCompliantResources
-                    $InitNonCompPol = $1.results.nonCompliantPolicies
+                    # Safely access results properties
+                    $InitNonCompRes = if ($null -ne $1 -and $null -ne $1.results) { 
+                        if ($null -ne $1.results.nonCompliantResources) { $1.results.nonCompliantResources } else { '' }
+                    } else { '' }
+                    $InitNonCompPol = if ($null -ne $1 -and $null -ne $1.results) { 
+                        if ($null -ne $1.results.nonCompliantPolicies) { $1.results.nonCompliantPolicies } else { '' }
+                    } else { '' }
                 }
             else
                 {
@@ -82,11 +110,23 @@ function Start-ARIPolicyJob {
 
             # Safely access policyDefinitions
             $policyDefinitions = @()
-            if ($null -ne $1 -and $null -ne $1.policyDefinitions) {
-                $policyDefinitions = if ($1.policyDefinitions -is [System.Array]) { 
-                    $1.policyDefinitions 
-                } else { 
-                    @($1.policyDefinitions) 
+            if ($null -ne $1) {
+                if ($1 -is [PSCustomObject] -or $1 -is [System.Collections.Hashtable]) {
+                    if ($null -ne $1.policyDefinitions) {
+                        $policyDefinitions = if ($1.policyDefinitions -is [System.Array]) { 
+                            $1.policyDefinitions 
+                        } else { 
+                            @($1.policyDefinitions) 
+                        }
+                    }
+                } elseif ($1 -is [System.Collections.IDictionary]) {
+                    if ($1.ContainsKey('policyDefinitions')) {
+                        $policyDefinitions = if ($1['policyDefinitions'] -is [System.Array]) { 
+                            $1['policyDefinitions'] 
+                        } else { 
+                            @($1['policyDefinitions']) 
+                        }
+                    }
                 }
             }
 
