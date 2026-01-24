@@ -206,13 +206,21 @@ function Start-ARIExcelJob {
                         try {
                             Invoke-Command -ScriptBlock $ScriptBlock -ArgumentList $PSScriptRoot, $null, $InTag, $null, $null, 'Reporting', $File, $SmaResources, $TableStyle, $null -ErrorAction Stop
                             
-                            # Small delay after Export-Excel to ensure file is fully written and closed
-                            # This helps prevent file lock issues when the next module tries to write
-                            Start-Sleep -Milliseconds 100
+                            # CRITICAL: Longer delay after Export-Excel to ensure file is fully written and closed
+                            # Export-Excel with -Path opens, writes, and closes the file, but EPPlus may need time
+                            # to fully release file handles before the next module can access it
+                            Start-Sleep -Milliseconds 500
                             
-                            # Force garbage collection to release any file handles
-                            [System.GC]::Collect()
-                            [System.GC]::WaitForPendingFinalizers()
+                            # Force multiple garbage collection cycles to release any file handles
+                            # This is critical for preventing "Error saving file" when modules run sequentially
+                            for ($i = 1; $i -le 3; $i++) {
+                                [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $false)
+                                [System.GC]::WaitForPendingFinalizers()
+                            }
+                            [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
+                            
+                            # Additional small delay after GC to ensure file system has released the lock
+                            Start-Sleep -Milliseconds 100
                         } catch {
                             $errorMsg = $_.Exception.Message
                             Write-Error "Module '$ModName' failed: $errorMsg"
