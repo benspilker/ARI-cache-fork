@@ -946,10 +946,22 @@ Function Invoke-CachedARI-Patched {
                                     }
                                 }
                             }
-                            # Convert ArrayList back to array for compatibility
-                            $PolicyAssign = $allPolicyAssign.ToArray()
-                            $PolicyDef = $allPolicyDef.ToArray()
-                            $PolicySetDef = $allPolicySetDef.ToArray()
+                            # Convert ArrayList back to array for compatibility (handle empty arrays)
+                            if ($allPolicyAssign.Count -gt 0) {
+                                $PolicyAssign = $allPolicyAssign.ToArray()
+                            } else {
+                                $PolicyAssign = @()
+                            }
+                            if ($allPolicyDef.Count -gt 0) {
+                                $PolicyDef = $allPolicyDef.ToArray()
+                            } else {
+                                $PolicyDef = @()
+                            }
+                            if ($allPolicySetDef.Count -gt 0) {
+                                $PolicySetDef = $allPolicySetDef.ToArray()
+                            } else {
+                                $PolicySetDef = @()
+                            }
                             # Safely access Count property - handle null/empty cases
                             $PolicyCount = "0"
                             if ($null -ne $PolicyAssign) {

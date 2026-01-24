@@ -141,10 +141,10 @@ function Start-ARIExtraReports {
             }
         }
         
-        if ($null -ne $policyCacheFile) {
+        if ($null -ne $policyCacheFile -and (Test-Path $policyCacheFile)) {
             try {
                 Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Checking Policy cache file: ' + $policyCacheFile)
-                $policyCacheData = Get-Content $policyCacheFile -Raw | ConvertFrom-Json
+                $policyCacheData = Get-Content $policyCacheFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
                 # Check if it's processed format (array) vs raw format (object with PolicyAssign/PolicyDef properties)
                 if ($policyCacheData -is [System.Array]) {
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found processed Policy data in cache (array format) - using directly')
