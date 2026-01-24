@@ -107,16 +107,41 @@ function Start-ARIExtraReports {
         $policyCacheFile = $null
         
         # Try multiple paths to find Policy.json
-        $possiblePaths = @(
-            "/root/AzureResourceInventory/ReportCache/Policy.json",
-            (Join-Path $env:HOME "AzureResourceInventory/ReportCache/Policy.json"),
-            (Join-Path (Split-Path $File -Parent) "ReportCache/Policy.json"),
-            (Join-Path (Split-Path $File -Parent) "ReportCache\Policy.json"),
-            (Join-Path (Get-Location).Path "ReportCache\Policy.json"),
-            (Join-Path (Get-Location).Path "ReportCache/Policy.json"),
-            ".\ReportCache\Policy.json",
-            ".\ReportCache/Policy.json"
-        )
+        $possiblePaths = @()
+        
+        # Add Linux paths
+        $possiblePaths += "/root/AzureResourceInventory/ReportCache/Policy.json"
+        if ($null -ne $env:HOME) {
+            $possiblePaths += (Join-Path $env:HOME "AzureResourceInventory/ReportCache/Policy.json")
+        }
+        
+        # Add paths relative to Excel file (if File parameter is provided)
+        if ($null -ne $File -and $File -ne '') {
+            try {
+                $fileParent = Split-Path $File -Parent -ErrorAction Stop
+                if ($null -ne $fileParent -and $fileParent -ne '') {
+                    $possiblePaths += (Join-Path $fileParent "ReportCache/Policy.json")
+                    $possiblePaths += (Join-Path $fileParent "ReportCache\Policy.json")
+                }
+            } catch {
+                # Ignore errors splitting file path
+            }
+        }
+        
+        # Add paths relative to current location
+        try {
+            $currentPath = (Get-Location).Path
+            if ($null -ne $currentPath -and $currentPath -ne '') {
+                $possiblePaths += (Join-Path $currentPath "ReportCache\Policy.json")
+                $possiblePaths += (Join-Path $currentPath "ReportCache/Policy.json")
+            }
+        } catch {
+            # Ignore errors getting current location
+        }
+        
+        # Add relative paths
+        $possiblePaths += ".\ReportCache\Policy.json"
+        $possiblePaths += ".\ReportCache/Policy.json"
         
         foreach ($testPath in $possiblePaths) {
             if ($null -ne $testPath -and (Test-Path $testPath)) {
