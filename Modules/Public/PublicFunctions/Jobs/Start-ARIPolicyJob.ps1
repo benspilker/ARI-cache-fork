@@ -200,10 +200,23 @@ function Start-ARIPolicyJob {
                         }
                     }
                     
-                    $Pol = if ($null -ne $policyDefId) {
-                        (($poltmp | Where-Object {$_.id -eq $policyDefId}).properties)
-                    } else {
-                        $null
+                    # Safely access PolicyDef properties from poltmp
+                    $Pol = $null
+                    if ($null -ne $policyDefId) {
+                        $matchingPolDef = $poltmp | Where-Object {$_.id -eq $policyDefId} | Select-Object -First 1
+                        if ($null -ne $matchingPolDef) {
+                            try {
+                                # Check if properties exists and is not null
+                                if ($matchingPolDef -is [PSCustomObject] -and $matchingPolDef.PSObject.Properties['properties'] -and $null -ne $matchingPolDef.properties) {
+                                    $Pol = $matchingPolDef.properties
+                                } elseif (($matchingPolDef -is [System.Collections.Hashtable] -or $matchingPolDef -is [System.Collections.IDictionary]) -and $matchingPolDef.ContainsKey('properties') -and $null -ne $matchingPolDef['properties']) {
+                                    $Pol = $matchingPolDef['properties']
+                                }
+                            } catch {
+                                # Property access failed
+                                $Pol = $null
+                            }
+                        }
                     }
                     
                     if(![string]::IsNullOrEmpty($Pol))
@@ -259,21 +272,58 @@ function Start-ARIPolicyJob {
                                 }
                             }
                             
+                            # Safely access Pol properties
+                            $polDisplayName = ''
+                            $polPolicyType = ''
+                            $polMode = ''
+                            $polVersion = ''
+                            $polDeprecated = ''
+                            $polCategory = ''
+                            
+                            if ($null -ne $Pol) {
+                                try {
+                                    if ($Pol -is [PSCustomObject]) {
+                                        $polDisplayName = if ($Pol.PSObject.Properties['displayName']) { $Pol.displayName } else { '' }
+                                        $polPolicyType = if ($Pol.PSObject.Properties['policyType']) { $Pol.policyType } else { '' }
+                                        $polMode = if ($Pol.PSObject.Properties['mode']) { $Pol.mode } else { '' }
+                                        $polVersion = if ($Pol.PSObject.Properties['version']) { $Pol.version } else { '' }
+                                        if ($Pol.PSObject.Properties['metadata'] -and $null -ne $Pol.metadata) {
+                                            $polDeprecated = if ($Pol.metadata.PSObject.Properties['deprecated']) { $Pol.metadata.deprecated } else { '' }
+                                            $polCategory = if ($Pol.metadata.PSObject.Properties['category']) { $Pol.metadata.category } else { '' }
+                                        }
+                                    } elseif ($Pol -is [System.Collections.Hashtable] -or $Pol -is [System.Collections.IDictionary]) {
+                                        $polDisplayName = if ($Pol.ContainsKey('displayName')) { $Pol['displayName'] } else { '' }
+                                        $polPolicyType = if ($Pol.ContainsKey('policyType')) { $Pol['policyType'] } else { '' }
+                                        $polMode = if ($Pol.ContainsKey('mode')) { $Pol['mode'] } else { '' }
+                                        $polVersion = if ($Pol.ContainsKey('version')) { $Pol['version'] } else { '' }
+                                        if ($Pol.ContainsKey('metadata') -and $null -ne $Pol['metadata']) {
+                                            $metadata = $Pol['metadata']
+                                            if ($metadata -is [System.Collections.Hashtable] -or $metadata -is [System.Collections.IDictionary]) {
+                                                $polDeprecated = if ($metadata.ContainsKey('deprecated')) { $metadata['deprecated'] } else { '' }
+                                                $polCategory = if ($metadata.ContainsKey('category')) { $metadata['category'] } else { '' }
+                                            }
+                                        }
+                                    }
+                                } catch {
+                                    # Property access failed - use empty strings
+                                }
+                            }
+                            
                             $obj = @{
                                 'Initiative'                            = $Initiative;
                                 'Initiative Non Compliance Resources'   = $InitNonCompRes;
                                 'Initiative Non Compliance Policies'    = $InitNonCompPol;
-                                'Policy'                                = $Pol.displayName;
-                                'Policy Type'                           = $Pol.policyType;
+                                'Policy'                                = $polDisplayName;
+                                'Policy Type'                           = $polPolicyType;
                                 'Effect'                                = $effectValue;
                                 'Compliance Resources'                  = $PolResCompl;
                                 'Non Compliance Resources'              = $PolResNonCompl;
                                 'Unknown Resources'                     = $PolResUnkown;
                                 'Exempt Resources'                      = $PolResExemp
-                                'Policy Mode'                           = $Pol.mode;
-                                'Policy Version'                        = $Pol.version;
-                                'Policy Deprecated'                     = $Pol.metadata.deprecated;
-                                'Policy Category'                       = $Pol.metadata.category
+                                'Policy Mode'                           = $polMode;
+                                'Policy Version'                        = $polVersion;
+                                'Policy Deprecated'                     = $polDeprecated;
+                                'Policy Category'                       = $polCategory
                             }
                             $obj
                         }
