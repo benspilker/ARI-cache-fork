@@ -29,6 +29,7 @@ function Start-ARIPolicyJob {
 
     # Create poltmp - handle cases where properties might be at root level or nested
     $poltmp = @()
+    $poltmpCount = 0
     foreach ($polDefItem in $PolicyDef) {
         if ($null -eq $polDefItem) { continue }
         
@@ -64,11 +65,13 @@ function Start-ARIPolicyJob {
                 id = $polId
                 properties = $polProperties
             }
+            $poltmpCount++
         }
     }
     
     # Remove duplicates by id
     $poltmp = $poltmp | Select-Object -Unique -Property id
+    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Created poltmp with ' + $poltmp.Count + ' unique PolicyDef entries (processed ' + $poltmpCount + ' items)')
 
     # Safely access PolicyAssign.policyAssignments
     $policyAssignments = @()
@@ -93,8 +96,12 @@ function Start-ARIPolicyJob {
         $PolicySetDef = @($PolicySetDef)
     }
 
-    $tmp = foreach ($1 in $policyAssignments)
+    $tmp = @()
+    $processedAssignments = 0
+    $processedPolicyDefs = 0
+    foreach ($1 in $policyAssignments)
         {
+            $processedAssignments++
             # Safely check if policySetDefinitionId property exists and is not null/empty
             $policySetDefId = $null
             if ($null -ne $1) {
@@ -224,6 +231,9 @@ function Start-ARIPolicyJob {
                     $policyDefinitions = @()
                 }
             }
+            
+            $policyDefsInAssignment = $policyDefinitions.Count
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Assignment ' + $processedAssignments + ' has ' + $policyDefsInAssignment + ' policy definition(s)')
 
             foreach ($2 in $policyDefinitions)
                 {
@@ -257,11 +267,16 @@ function Start-ARIPolicyJob {
                                 # Property access failed
                                 $Pol = $null
                             }
+                        } else {
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: No matching PolicyDef found for policyDefinitionId: ' + $policyDefId)
                         }
+                    } else {
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: policyDefinitionId is null or empty')
                     }
                     
                     if(![string]::IsNullOrEmpty($Pol))
                         {
+                            $processedPolicyDefs++
                             # Safely access results.resourceDetails
                             $resourceDetails = @()
                             if ($null -ne $2) {
@@ -376,5 +391,6 @@ function Start-ARIPolicyJob {
     } elseif ($tmp -isnot [System.Array]) {
         $tmp = @($tmp)
     }
+    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Processed ' + $processedAssignments + ' assignment(s), ' + $processedPolicyDefs + ' policy definition(s), returning ' + $tmp.Count + ' Policy record(s)')
     $tmp
 }
