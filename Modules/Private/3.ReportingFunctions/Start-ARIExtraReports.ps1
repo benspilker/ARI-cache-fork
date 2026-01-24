@@ -166,6 +166,15 @@ function Start-ARIExtraReports {
             }
         }
         
+        # Check for Policy job FIRST before checking Policy.json
+        # This ensures we don't miss the Policy job if it's still running
+        $policyJobExists = $false
+        $policyJob = Get-Job -Name 'Policy' -ErrorAction SilentlyContinue
+        if ($null -ne $policyJob) {
+            $policyJobExists = $true
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Policy job found: State=' + $policyJob.State)
+        }
+        
         if ($null -ne $policyCacheFile -and (Test-Path $policyCacheFile)) {
             try {
                 Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Checking Policy cache file: ' + $policyCacheFile)
@@ -181,6 +190,15 @@ function Start-ARIExtraReports {
                         $Pol = @($Pol)
                     }
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Loaded ' + $Pol.Count + ' processed Policy record(s) from cache')
+                } elseif ($policyCacheData.PSObject.Properties['PolicyAssign'] -or $policyCacheData.PSObject.Properties['PolicyDef']) {
+                    # Raw Policy data found - Policy job should process it
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found raw Policy data in cache (PolicyAssign/PolicyDef format) - Policy job will process it')
+                    # Don't set $Pol here - let the Policy job process it
+                    # Ensure we check for Policy job even if $Pol is null
+                } elseif ($policyCacheData.PSObject.Properties['PolicyAssign'] -or $policyCacheData.PSObject.Properties['PolicyDef']) {
+                    # Raw Policy data found - Policy job should process it
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found raw Policy data in cache (PolicyAssign/PolicyDef format) - Policy job will process it')
+                    # Don't set $Pol here - let the Policy job process it
                 }
             } catch {
                 Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error loading Policy cache: ' + $_.Exception.Message)
@@ -219,15 +237,29 @@ function Start-ARIExtraReports {
             Write-Progress -Id 1 -activity 'Processing Policies' -Status "100% Complete." -Completed
         }
         # Otherwise, check for Policy job (for raw Policy data processing)
-        elseif (get-job | Where-Object {$_.Name -eq 'Policy'})
+        # Use the $policyJobExists variable we checked earlier, or check again if job exists
+        elseif ($policyJobExists -or (get-job | Where-Object {$_.Name -eq 'Policy'}))
             {
                 Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Generating Policy Sheet from Policy job.')
+
+                # Wait for Policy job to complete if it's still running
+                $policyJobCheck = Get-Job -Name 'Policy' -ErrorAction SilentlyContinue
+                if ($null -ne $policyJobCheck -and $policyJobCheck.State -eq 'Running') {
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Policy job is still running - waiting for completion...')
+                    while ($policyJobCheck.State -eq 'Running') {
+                        Start-Sleep -Seconds 1
+                        $policyJobCheck = Get-Job -Name 'Policy' -ErrorAction SilentlyContinue
+                        if ($null -eq $policyJobCheck) { break }
+                    }
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Policy job completed: State=' + $policyJobCheck.State)
+                }
 
                 # Aggressive memory cleanup BEFORE receiving Policy job results to free memory from previous operations
                 Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Running aggressive memory cleanup before receiving Policy job results.')
                 try {
                     # Remove any other completed jobs first (Advisory was already received above)
-                    Get-Job | Where-Object {$_.State -ne 'Running'} | Remove-Job -Force -ErrorAction SilentlyContinue
+                    # BUT preserve the Policy job until we receive its results
+                    Get-Job | Where-Object {$_.State -ne 'Running' -and $_.Name -ne 'Policy'} | Remove-Job -Force -ErrorAction SilentlyContinue
                     # Multiple aggressive GC collections
                     for ($i = 1; $i -le 5; $i++) {
                         [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $false)
