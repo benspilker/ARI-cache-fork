@@ -110,13 +110,34 @@ function Start-ARIExtraReports {
         $possiblePaths = @(
             "/root/AzureResourceInventory/ReportCache/Policy.json",
             (Join-Path $env:HOME "AzureResourceInventory/ReportCache/Policy.json"),
-            (Join-Path (Split-Path $File -Parent) "ReportCache/Policy.json")
+            (Join-Path (Split-Path $File -Parent) "ReportCache/Policy.json"),
+            (Join-Path (Split-Path $File -Parent) "ReportCache\Policy.json"),
+            (Join-Path (Get-Location).Path "ReportCache\Policy.json"),
+            (Join-Path (Get-Location).Path "ReportCache/Policy.json"),
+            ".\ReportCache\Policy.json",
+            ".\ReportCache/Policy.json"
         )
         
         foreach ($testPath in $possiblePaths) {
-            if (Test-Path $testPath) {
+            if ($null -ne $testPath -and (Test-Path $testPath)) {
                 $policyCacheFile = $testPath
                 break
+            }
+        }
+        
+        # Also check ReportCache variable if available
+        if ($null -eq $policyCacheFile) {
+            try {
+                $reportCacheVar = Get-Variable -Name 'ReportCache' -Scope 'Script' -ErrorAction SilentlyContinue
+                if ($null -ne $reportCacheVar -and $null -ne $reportCacheVar.Value) {
+                    $reportCachePath = $reportCacheVar.Value
+                    $policyPath = Join-Path $reportCachePath "Policy.json"
+                    if (Test-Path $policyPath) {
+                        $policyCacheFile = $policyPath
+                    }
+                }
+            } catch {
+                # Ignore errors accessing ReportCache variable
             }
         }
         
