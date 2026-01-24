@@ -72,6 +72,12 @@ function Start-ARIPolicyJob {
     # Remove duplicates by id
     $poltmp = $poltmp | Select-Object -Unique -Property id
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Created poltmp with ' + $poltmp.Count + ' unique PolicyDef entries (processed ' + $poltmpCount + ' items)')
+    
+    # Debug: Show sample of PolicyDef IDs to help diagnose matching issues
+    if ($poltmp.Count -gt 0) {
+        $sampleIds = $poltmp | Select-Object -First 3 | ForEach-Object { $_.id }
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Sample PolicyDef IDs: ' + ($sampleIds -join ', '))
+    }
 
     # Safely access PolicyAssign.policyAssignments
     $policyAssignments = @()
@@ -252,9 +258,56 @@ function Start-ARIPolicyJob {
                     }
                     
                     # Safely access PolicyDef properties from poltmp
+                    # Match policyDefinitionId (which may be full path or GUID) against PolicyDef id (which may also be full path or GUID)
                     $Pol = $null
                     if ($null -ne $policyDefId) {
-                        $matchingPolDef = $poltmp | Where-Object {$_.id -eq $policyDefId} | Select-Object -First 1
+                        # Extract GUID from policyDefinitionId if it's a full path
+                        # Format: /providers/microsoft.authorization/policydefinitions/{guid}
+                        # or: /providers/microsoft.management/managementgroups/{mg}/providers/microsoft.authorization/policydefinitions/{guid}
+                        $policyDefGuid = $null
+                        if ($policyDefId -match 'policydefinitions/([a-f0-9\-]{36})$') {
+                            $policyDefGuid = $Matches[1]
+                        } elseif ($policyDefId -match '^[a-f0-9\-]{36}$') {
+                            # Already a GUID
+                            $policyDefGuid = $policyDefId
+                        }
+                        
+                        # Try to find matching PolicyDef by:
+                        # 1. Exact match (full path to full path, or GUID to GUID)
+                        # 2. GUID match (extract GUID from PolicyDef id and compare)
+                        $matchingPolDef = $null
+                        foreach ($polDefItem in $poltmp) {
+                            $polDefId = $null
+                            if ($polDefItem -is [PSCustomObject] -and $polDefItem.PSObject.Properties['id']) {
+                                $polDefId = $polDefItem.id
+                            } elseif (($polDefItem -is [System.Collections.Hashtable] -or $polDefItem -is [System.Collections.IDictionary]) -and $polDefItem.ContainsKey('id')) {
+                                $polDefId = $polDefItem['id']
+                            }
+                            
+                            if ($null -ne $polDefId) {
+                                # Try exact match first
+                                if ($polDefId -eq $policyDefId) {
+                                    $matchingPolDef = $polDefItem
+                                    break
+                                }
+                                
+                                # Try GUID match if we extracted a GUID
+                                if ($null -ne $policyDefGuid) {
+                                    $polDefGuid = $null
+                                    if ($polDefId -match 'policydefinitions/([a-f0-9\-]{36})$') {
+                                        $polDefGuid = $Matches[1]
+                                    } elseif ($polDefId -match '^[a-f0-9\-]{36}$') {
+                                        $polDefGuid = $polDefId
+                                    }
+                                    
+                                    if ($null -ne $polDefGuid -and $polDefGuid -eq $policyDefGuid) {
+                                        $matchingPolDef = $polDefItem
+                                        break
+                                    }
+                                }
+                            }
+                        }
+                        
                         if ($null -ne $matchingPolDef) {
                             try {
                                 # Check if properties exists and is not null
@@ -268,7 +321,7 @@ function Start-ARIPolicyJob {
                                 $Pol = $null
                             }
                         } else {
-                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: No matching PolicyDef found for policyDefinitionId: ' + $policyDefId)
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: No matching PolicyDef found for policyDefinitionId: ' + $policyDefId + ' (extracted GUID: ' + $(if ($policyDefGuid) { $policyDefGuid } else { 'none' }) + ')')
                         }
                     } else {
                         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: policyDefinitionId is null or empty')
