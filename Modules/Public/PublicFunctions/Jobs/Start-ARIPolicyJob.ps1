@@ -83,7 +83,27 @@ function Start-ARIPolicyJob {
                         {
                             if ($PolDe.id -eq $policySetDefId)
                                 {
-                                    $PolDe.properties.displayName
+                                    # Safely access properties.displayName - handle cases where properties might not exist
+                                    $displayName = $null
+                                    if ($null -ne $PolDe) {
+                                        try {
+                                            if ($PolDe -is [PSCustomObject] -and $PolDe.PSObject.Properties['properties']) {
+                                                $displayName = $PolDe.properties.displayName
+                                            } elseif (($PolDe -is [System.Collections.Hashtable] -or $PolDe -is [System.Collections.IDictionary]) -and $PolDe.ContainsKey('properties')) {
+                                                $displayName = $PolDe['properties'].displayName
+                                            } elseif ($PolDe -is [PSCustomObject] -and $PolDe.PSObject.Properties['displayName']) {
+                                                # Fallback: displayName might be at root level
+                                                $displayName = $PolDe.displayName
+                                            } elseif (($PolDe -is [System.Collections.Hashtable] -or $PolDe -is [System.Collections.IDictionary]) -and $PolDe.ContainsKey('displayName')) {
+                                                # Fallback: displayName might be at root level
+                                                $displayName = $PolDe['displayName']
+                                            }
+                                        } catch {
+                                            # Property access failed - use empty string
+                                            $displayName = ''
+                                        }
+                                    }
+                                    $displayName
                                 }
                         }
                     # Ensure TempPolDef is an array for safe count access
