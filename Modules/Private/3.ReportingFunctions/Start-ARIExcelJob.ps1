@@ -196,7 +196,7 @@ function Start-ARIExcelJob {
 
                         $ScriptBlock = [Scriptblock]::Create($ModuleData)
 
-                        Invoke-Command -ScriptBlock $ScriptBlock -ArgumentList $PSScriptRoot, $null, $InTag, $null, $null, 'Reporting', $file, $SmaResources, $TableStyle, $null
+                        Invoke-Command -ScriptBlock $ScriptBlock -ArgumentList $PSScriptRoot, $null, $InTag, $null, $null, 'Reporting', $File, $SmaResources, $TableStyle, $null
 
                     }
 
