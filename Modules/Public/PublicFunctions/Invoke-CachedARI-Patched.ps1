@@ -451,7 +451,9 @@ Function Invoke-CachedARI-Patched {
                         Write-Host "[UseExistingCache] Loaded Policy data from cache ($policyCount assignment(s), $($PolicyDef.Count) definition(s), $($PolicySetDef.Count) set definition(s))" -ForegroundColor Green
                         $hasPolicyData = $true
                     } else {
-                        # Processed Policy results (array) - mark as available but will be processed by Policy job
+                        # Processed Policy results (array) - this format is not usable for Policy job
+                        # Policy job needs raw Policy data (PolicyAssign/PolicyDef/PolicySetDef)
+                        # So we need to collect Policy via API to get raw Policy data
                         $policyCacheCount = 0
                         if ($null -ne $policyCacheData) {
                             if ($policyCacheData -is [System.Array]) {
@@ -466,8 +468,10 @@ Function Invoke-CachedARI-Patched {
                                 }
                             }
                         }
-                        Write-Host "[UseExistingCache] Loaded Policy cache file ($policyCacheCount policy record(s))" -ForegroundColor Green
-                        # Policy data will be loaded when Start-ARIExtraJobs processes the Policy job
+                        Write-Host "[UseExistingCache] Policy.json contains processed Policy data (array format) - will collect raw Policy data via API" -ForegroundColor Yellow
+                        Write-Host "[UseExistingCache] Policy cache file has $policyCacheCount policy record(s) but raw Policy data is needed for Policy job" -ForegroundColor Gray
+                        # Mark as not having Policy data so it will be collected via API
+                        $hasPolicyData = $false
                     }
                 } catch {
                     Write-Host "[UseExistingCache] Warning: Failed to load Policy cache file: $_" -ForegroundColor Yellow
