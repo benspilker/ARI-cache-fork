@@ -18,18 +18,68 @@ Authors: Claudio Merola
 #>
 function Build-ARIExcelChart {
     Param($Excel, $Overview, $IncludeCosts)
+    
+    # Helper function to get source range for pivot table
+    # EPPlus requires explicit range reference in pivot cache definitions
+    # CRITICAL: EPPlus may ignore SourceRange when SourceWorkSheet is also provided
+    # So we need to format SourceRange with sheet name: 'SheetName!A1:Z100'
+    function Get-PivotTableSourceRange {
+        param($Worksheet)
+        if ($null -eq $Worksheet) { 
+            Write-Debug "  [Get-PivotTableSourceRange] Worksheet is null"
+            return $null 
+        }
+        
+        $sheetName = $Worksheet.Name
+        $range = $null
+        
+        # Prefer table address if worksheet has a table
+        if ($Worksheet.Tables.Count -gt 0 -and $null -ne $Worksheet.Tables[0].Address) {
+            $range = $Worksheet.Tables[0].Address.Address
+            Write-Debug "  [Get-PivotTableSourceRange] Using table address: $range"
+        }
+        # Fallback to worksheet dimension
+        elseif ($null -ne $Worksheet.Dimension) {
+            $range = $Worksheet.Dimension.Address
+            Write-Debug "  [Get-PivotTableSourceRange] Using worksheet dimension: $range"
+        }
+        
+        if ($null -ne $range) {
+            # CRITICAL: EPPlus may ignore SourceRange when SourceWorkSheet is also provided
+            # We need to format SourceRange with sheet name so EPPlus can identify the source
+            # Format: 'SheetName'!A1:Z100 (Excel formula format)
+            $formattedRange = "'$sheetName'!$range"
+            Write-Debug "  [Get-PivotTableSourceRange] Formatted range with sheet name: $formattedRange"
+            return $formattedRange
+        }
+        
+        Write-Debug "  [Get-PivotTableSourceRange] No table or dimension found for worksheet: $sheetName"
+        return $null
+    }
 
-    $WS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Overview' }
+    $WS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Overview' } | Select-Object -First 1
+    if ($null -eq $WS) {
+        Write-Error "Overview worksheet not found in Excel workbook"
+        return
+    }
 
-    $DrawP00 = $WS.Drawings | Where-Object { $_.Name -eq 'TP00' }
-    $P00Name = 'Reported Resources'
-    $DrawP00.RichText.Add($P00Name).Size = 16
+    $DrawP00 = $WS.Drawings | Where-Object { $_.Name -eq 'TP00' } | Select-Object -First 1
+    if ($null -ne $DrawP00) {
+        $P00Name = 'Reported Resources'
+        $DrawP00.RichText.Add($P00Name).Size = 16
+    } else {
+        Write-Debug "  Warning: Drawing 'TP00' not found on Overview sheet - skipping"
+    }
 
     if($IncludeCosts.IsPresent)
         {
             # Safely check if Subscriptions worksheet exists before accessing
             $SubscriptionsWS = $Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Subscriptions' } | Select-Object -First 1
             if ($null -ne $SubscriptionsWS) {
+                # CRITICAL: Get source range for pivot table
+                # EPPlus requires explicit range reference to create valid pivot cache XML
+                $sourceRange = Get-PivotTableSourceRange -Worksheet $SubscriptionsWS
+                
                 $PTParams = @{
                     PivotTableName          = "P00"
                     Address                 = $excel.Overview.cells["BA5"] # top-left corner of the table
@@ -55,16 +105,23 @@ function Build-ARIExcelChart {
                     ChartRowOffSetPixels    = 0
                     ChartColumnOffSetPixels = 5
                 }
+                # Add SourceRange if we found a valid range (prevents empty 'ref' attribute in pivot cache)
+                if ($null -ne $sourceRange) {
+                    $PTParams['SourceRange'] = $sourceRange
+                }
                 Add-PivotTable @PTParams
             } else {
                 Write-Debug "  Warning: Subscriptions worksheet not found - skipping P00 Cost per Subscription PivotTable"
             }
         }
     elseif ($Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Reservation Advisor' }) {
+        $ReservationAdvisorWS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Reservation Advisor' } | Select-Object -First 1
+        $sourceRange = Get-PivotTableSourceRange -Worksheet $ReservationAdvisorWS
+        
         $PTParams = @{
             PivotTableName          = "P00"
             Address                 = $excel.Overview.cells["BA5"] # top-left corner of the table
-            SourceWorkSheet         = $excel.'Reservation Advisor'
+            SourceWorkSheet         = $ReservationAdvisorWS
             PivotRows               = @("Subscription")
             PivotData               = @{"Net Savings" = "Sum" }
             PivotTableStyle         = $TableStyle
@@ -85,6 +142,9 @@ function Build-ARIExcelChart {
             ChartRowOffSetPixels    = 0
             ChartColumnOffSetPixels = 5
         }
+        if ($null -ne $sourceRange) {
+            $PTParams['SourceRange'] = $sourceRange
+        }
         Add-PivotTable @PTParams
     }
     else
@@ -97,6 +157,7 @@ function Build-ARIExcelChart {
             # Safely check if Subscriptions worksheet exists before accessing
             $SubscriptionsWS = $Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Subscriptions' } | Select-Object -First 1
             if ($null -ne $SubscriptionsWS) {
+                $sourceRange = Get-PivotTableSourceRange -Worksheet $SubscriptionsWS
                 $P0Name = 'CostPerRegion'
                 $PTParams = @{
                     PivotTableName          = "P0"
@@ -120,6 +181,9 @@ function Build-ARIExcelChart {
                     ChartRowOffSetPixels    = 5
                     ChartColumnOffSetPixels = 5
                 }
+                if ($null -ne $sourceRange) {
+                    $PTParams['SourceRange'] = $sourceRange
+                }
                 Add-PivotTable @PTParams -NoLegend
             } else {
                 Write-Debug "  Warning: Subscriptions worksheet not found - skipping P0 CostPerRegion PivotTable"
@@ -130,6 +194,7 @@ function Build-ARIExcelChart {
         # Safely check if Outages worksheet exists before accessing
         $OutagesWS = $Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Outages' } | Select-Object -First 1
         if ($null -ne $OutagesWS) {
+            $sourceRange = Get-PivotTableSourceRange -Worksheet $OutagesWS
             $P0Name = 'Outages'
             $PTParams = @{
                 PivotTableName          = "P0"
@@ -151,6 +216,9 @@ function Build-ARIExcelChart {
                 ChartRowOffSetPixels    = 5
                 ChartColumnOffSetPixels = 5
             }
+            if ($null -ne $sourceRange) {
+                $PTParams['SourceRange'] = $sourceRange
+            }
             Add-PivotTable @PTParams -NoLegend
         } else {
             Write-Debug "  Warning: Outages worksheet not found - skipping P0 Outages PivotTable"
@@ -161,6 +229,7 @@ function Build-ARIExcelChart {
         # Safely check if Advisor worksheet exists before accessing
         $AdvisorWS = $Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Advisor' } | Select-Object -First 1
         if ($null -ne $AdvisorWS) {
+            $sourceRange = Get-PivotTableSourceRange -Worksheet $AdvisorWS
             $P0Name = 'Advisories'
             $PTParams = @{
                 PivotTableName          = "P0"
@@ -182,6 +251,9 @@ function Build-ARIExcelChart {
                 ChartRowOffSetPixels    = 5
                 ChartColumnOffSetPixels = 5
             }
+            if ($null -ne $sourceRange) {
+                $PTParams['SourceRange'] = $sourceRange
+            }
             Add-PivotTable @PTParams -NoLegend
         } else {
             Write-Debug "  Warning: Advisor worksheet not found - skipping P0 Advisories PivotTable"
@@ -192,6 +264,7 @@ function Build-ARIExcelChart {
         # Safely check if Public IPs worksheet exists before accessing
         $PublicIPsWS = $Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Public IPs' } | Select-Object -First 1
         if ($null -ne $PublicIPsWS) {
+            $sourceRange = Get-PivotTableSourceRange -Worksheet $PublicIPsWS
             $P0Name = 'Public IPs'
             $PTParams = @{
                 PivotTableName          = "P0"
@@ -213,6 +286,9 @@ function Build-ARIExcelChart {
                 ChartRowOffSetPixels    = 5
                 ChartColumnOffSetPixels = 5
             }
+            if ($null -ne $sourceRange) {
+                $PTParams['SourceRange'] = $sourceRange
+            }
             Add-PivotTable @PTParams -NoLegend
         } else {
             Write-Debug "  Warning: Public IPs worksheet not found - skipping P0 Public IPs PivotTable"
@@ -232,6 +308,7 @@ function Build-ARIExcelChart {
             # Safely check if Subscriptions worksheet exists before accessing
             $SubscriptionsWS = $Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Subscriptions' } | Select-Object -First 1
             if ($null -ne $SubscriptionsWS) {
+                $sourceRange = Get-PivotTableSourceRange -Worksheet $SubscriptionsWS
                 $P1Name = 'TotalCostsPerSubscription'
                 $PTParams = @{
                     PivotTableName          = "P1"
@@ -256,17 +333,22 @@ function Build-ARIExcelChart {
                 ChartRowOffSetPixels    = 5
                 ChartColumnOffSetPixels = 5
                 }
+                if ($null -ne $sourceRange) {
+                    $PTParams['SourceRange'] = $sourceRange
+                }
                 Add-PivotTable @PTParams
             } else {
                 Write-Debug "  Warning: Subscriptions worksheet not found - skipping P1 TotalCostsPerSubscription PivotTable"
             }
         }
     elseif (($Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'AdvisorScore' }) -and $Overview -eq 1) {
+        $AdvisorScoreWS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'AdvisorScore' } | Select-Object -First 1
+        $sourceRange = Get-PivotTableSourceRange -Worksheet $AdvisorScoreWS
         $P1Name = 'AdvisorScore'
         $PTParams = @{
             PivotTableName          = "P1"
             Address                 = $excel.Overview.cells["DK6"] # top-left corner of the table
-            SourceWorkSheet         = $excel.AdvisorScore
+            SourceWorkSheet         = $AdvisorScoreWS
             PivotRows               = @("Category")
             PivotData               = @{"Latest Score (%)" = "average" }
             PivotTableStyle         = $tableStyle
@@ -286,12 +368,16 @@ function Build-ARIExcelChart {
             ChartRowOffSetPixels    = 5
             ChartColumnOffSetPixels = 5
         }
+        if ($null -ne $sourceRange) {
+            $PTParams['SourceRange'] = $sourceRange
+        }
         Add-PivotTable @PTParams
     }
     elseif (($Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Subscriptions' }) -and $Overview -eq 2) {
         # Safely check if Subscriptions worksheet exists before accessing
         $SubscriptionsWS = $Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Subscriptions' } | Select-Object -First 1
         if ($null -ne $SubscriptionsWS) {
+            $sourceRange = Get-PivotTableSourceRange -Worksheet $SubscriptionsWS
             $P1Name = 'Subscriptions'
             $PTParams = @{
                 PivotTableName          = "P1"
@@ -314,17 +400,22 @@ function Build-ARIExcelChart {
             ChartRowOffSetPixels    = 5
             ChartColumnOffSetPixels = 5
             }
+            if ($null -ne $sourceRange) {
+                $PTParams['SourceRange'] = $sourceRange
+            }
             Add-PivotTable @PTParams
         } else {
             Write-Debug "  Warning: Subscriptions worksheet not found - skipping P1 PivotTable"
         }
     }
     elseif (($Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Quota Usage' }) -and $Overview -eq 1) {
+        $QuotaUsageWS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Quota Usage' } | Select-Object -First 1
+        $sourceRange = Get-PivotTableSourceRange -Worksheet $QuotaUsageWS
         $P1Name = 'Quota Usage'
         $PTParams = @{
             PivotTableName          = "P1"
             Address                 = $excel.Overview.cells["DK6"] # top-left corner of the table
-            SourceWorkSheet         = $excel.'Quota Usage'
+            SourceWorkSheet         = $QuotaUsageWS
             PivotRows               = @("Region")
             PivotData               = @{"vCPUs Available" = "Sum" }
             PivotTableStyle         = $tableStyle
@@ -342,14 +433,19 @@ function Build-ARIExcelChart {
             ChartRowOffSetPixels    = 5
             ChartColumnOffSetPixels = 5
         }
+        if ($null -ne $sourceRange) {
+            $PTParams['SourceRange'] = $sourceRange
+        }
         Add-PivotTable @PTParams
     }
     else {
+        $VirtualNetworksWS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Virtual Networks' } | Select-Object -First 1
+        $sourceRange = Get-PivotTableSourceRange -Worksheet $VirtualNetworksWS
         $P1Name = 'Virtual Networks'
         $PTParams = @{
             PivotTableName          = "P1"
             Address                 = $excel.Overview.cells["DK6"] # top-left corner of the table
-            SourceWorkSheet         = $excel.'Virtual Networks'
+            SourceWorkSheet         = $VirtualNetworksWS
             PivotRows               = @("Name")
             PivotData               = @{"Available IPs" = "Sum" }
             PivotTableStyle         = $tableStyle
@@ -367,17 +463,22 @@ function Build-ARIExcelChart {
             ChartRowOffSetPixels    = 5
             ChartColumnOffSetPixels = 5
         }
+        if ($null -ne $sourceRange) {
+            $PTParams['SourceRange'] = $sourceRange
+        }
         Add-PivotTable @PTParams
     }
     $DrawP1 = $WS.Drawings | Where-Object { $_.Name -eq 'TP1' }
     $DrawP1.RichText.Add($P1Name) | Out-Null
 
     if (($Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Policy' }) -and $Overview -eq 1) {
+        $PolicyWS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Policy' } | Select-Object -First 1
+        $sourceRange = Get-PivotTableSourceRange -Worksheet $PolicyWS
         $P2Name = 'Policy'
         $PTParams = @{
             PivotTableName          = "P2"
             Address                 = $excel.Overview.cells["BT5"] # top-left corner of the table
-            SourceWorkSheet         = $excel.Policy
+            SourceWorkSheet         = $PolicyWS
             PivotRows               = @("Policy Category")
             PivotData               = @{"Policy" = "Count" }
             PivotTableStyle         = $tableStyle
@@ -394,14 +495,19 @@ function Build-ARIExcelChart {
             ChartRowOffSetPixels    = 5
             ChartColumnOffSetPixels = 5
         }
+        if ($null -ne $sourceRange) {
+            $PTParams['SourceRange'] = $sourceRange
+        }
         Add-PivotTable @PTParams -NoLegend
     }
     elseif (($Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Advisor' }) -and $Overview -eq 2) {
+        $AdvisorWS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Advisor' } | Select-Object -First 1
+        $sourceRange = Get-PivotTableSourceRange -Worksheet $AdvisorWS
         $P2Name = 'Annual Savings'
         $PTParams = @{
             PivotTableName          = "P2"
             Address                 = $excel.Overview.cells["BT5"] # top-left corner of the table
-            SourceWorkSheet         = $excel.Advisor
+            SourceWorkSheet         = $AdvisorWS
             PivotRows               = @("Savings Currency")
             PivotData               = @{"Annual Savings" = "Sum" }
             PivotTableStyle         = $tableStyle
@@ -419,14 +525,19 @@ function Build-ARIExcelChart {
             ChartColumnOffSetPixels = 5
             PivotNumberFormat       = '#,##0.00'
         }
+        if ($null -ne $sourceRange) {
+            $PTParams['SourceRange'] = $sourceRange
+        }
         Add-PivotTable @PTParams -NoLegend
     }
     else {
+        $VirtualNetworksWS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Virtual Networks' } | Select-Object -First 1
+        $sourceRange = Get-PivotTableSourceRange -Worksheet $VirtualNetworksWS
         $P2Name = 'Virtual Networks'
         $PTParams = @{
             PivotTableName          = "P2"
             Address                 = $excel.Overview.cells["BT5"] # top-left corner of the table
-            SourceWorkSheet         = $excel.'Virtual Networks'
+            SourceWorkSheet         = $VirtualNetworksWS
             PivotRows               = @("Location")
             PivotData               = @{"Location" = "Count" }
             PivotTableStyle         = $tableStyle
@@ -443,6 +554,9 @@ function Build-ARIExcelChart {
             ChartRowOffSetPixels    = 5
             ChartColumnOffSetPixels = 5
         }
+        if ($null -ne $sourceRange) {
+            $PTParams['SourceRange'] = $sourceRange
+        }
         Add-PivotTable @PTParams -NoLegend
     }
 
@@ -450,11 +564,13 @@ function Build-ARIExcelChart {
     $DrawP2.RichText.Add($P2Name) | Out-Null
 
     if (($Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Support Tickets' }) -and $Overview -eq 1) {
+        $SupportTicketsWS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Support Tickets' } | Select-Object -First 1
+        $sourceRange = Get-PivotTableSourceRange -Worksheet $SupportTicketsWS
         $P3Name = 'Support Tickets'
         $PTParams = @{
             PivotTableName          = "P3"
             Address                 = $excel.Overview.cells["BZ5"] # top-left corner of the table
-            SourceWorkSheet         = $excel.'Support Tickets'
+            SourceWorkSheet         = $SupportTicketsWS
             PivotRows               = @("Status")
             PivotData               = @{"Status" = "Count" }
             PivotTableStyle         = $tableStyle
@@ -471,14 +587,19 @@ function Build-ARIExcelChart {
             ChartRowOffSetPixels    = 5
             ChartColumnOffSetPixels = 5
         }
+        if ($null -ne $sourceRange) {
+            $PTParams['SourceRange'] = $sourceRange
+        }
         Add-PivotTable @PTParams
     }
     elseif (($Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'AKS' }) -and $Overview -eq 2) {
+        $AKSWS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'AKS' } | Select-Object -First 1
+        $sourceRange = Get-PivotTableSourceRange -Worksheet $AKSWS
         $P3Name = 'Azure Kubernetes'
         $PTParams = @{
             PivotTableName          = "P3"
             Address                 = $excel.Overview.cells["BZ5"] # top-left corner of the table
-            SourceWorkSheet         = $excel.AKS
+            SourceWorkSheet         = $AKSWS
             PivotRows               = @("Kubernetes Version")
             PivotData               = @{"Clusters" = "Count" }
             PivotTableStyle         = $tableStyle
@@ -495,14 +616,19 @@ function Build-ARIExcelChart {
             ChartRowOffSetPixels    = 5
             ChartColumnOffSetPixels = 5
         }
+        if ($null -ne $sourceRange) {
+            $PTParams['SourceRange'] = $sourceRange
+        }
         Add-PivotTable @PTParams
     }
     else {
+        $StorageAccountsWS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Storage Accounts' } | Select-Object -First 1
+        $sourceRange = Get-PivotTableSourceRange -Worksheet $StorageAccountsWS
         $P3Name = 'Storage Accounts'
         $PTParams = @{
             PivotTableName          = "P3"
             Address                 = $excel.Overview.cells["BZ5"] # top-left corner of the table
-            SourceWorkSheet         = $excel.'Storage Accounts'
+            SourceWorkSheet         = $StorageAccountsWS
             PivotRows               = @("Tier")
             PivotData               = @{"Tier" = "Count" }
             PivotTableStyle         = $tableStyle
@@ -519,6 +645,9 @@ function Build-ARIExcelChart {
             ChartRowOffSetPixels    = 5
             ChartColumnOffSetPixels = 5
         }
+        if ($null -ne $sourceRange) {
+            $PTParams['SourceRange'] = $sourceRange
+        }
         Add-PivotTable @PTParams
     }
     $DrawP3 = $WS.Drawings | Where-Object { $_.Name -eq 'TP3' }
@@ -528,6 +657,7 @@ function Build-ARIExcelChart {
         # Safely check if Outages worksheet exists before accessing
         $OutagesWS = $Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Outages' } | Select-Object -First 1
         if ($null -ne $OutagesWS) {
+            $sourceRange = Get-PivotTableSourceRange -Worksheet $OutagesWS
             $P4Name = 'Outages'
             $PTParams = @{
                 PivotTableName          = "P4"
@@ -549,6 +679,9 @@ function Build-ARIExcelChart {
                 ChartRowOffSetPixels    = 5
                 ChartColumnOffSetPixels = 5
             }
+            if ($null -ne $sourceRange) {
+                $PTParams['SourceRange'] = $sourceRange
+            }
             Add-PivotTable @PTParams -NoLegend
         } else {
             Write-Debug "  Warning: Outages worksheet not found - skipping P4 Outages PivotTable"
@@ -559,6 +692,7 @@ function Build-ARIExcelChart {
         # Safely check if Quota Usage worksheet exists before accessing
         $QuotaUsageWS = $Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Quota Usage' } | Select-Object -First 1
         if ($null -ne $QuotaUsageWS) {
+            $sourceRange = Get-PivotTableSourceRange -Worksheet $QuotaUsageWS
             $P4Name = 'Quota Usage'
             $PTParams = @{
                 PivotTableName          = "P4"
@@ -580,6 +714,9 @@ function Build-ARIExcelChart {
                 ChartRowOffSetPixels    = 5
                 ChartColumnOffSetPixels = 5
             }
+            if ($null -ne $sourceRange) {
+                $PTParams['SourceRange'] = $sourceRange
+            }
             Add-PivotTable @PTParams -NoLegend
         } else {
             Write-Debug "  Warning: Quota Usage worksheet not found - skipping P4 Quota Usage PivotTable"
@@ -590,6 +727,7 @@ function Build-ARIExcelChart {
         # Safely check if Disks worksheet exists before accessing
         $DisksWS = $Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Disks' } | Select-Object -First 1
         if ($null -ne $DisksWS) {
+            $sourceRange = Get-PivotTableSourceRange -Worksheet $DisksWS
             $P4Name = 'VM Disks'
             $PTParams = @{
                 PivotTableName          = "P4"
@@ -611,6 +749,9 @@ function Build-ARIExcelChart {
                 ChartRowOffSetPixels    = 5
                 ChartColumnOffSetPixels = 5
             }
+            if ($null -ne $sourceRange) {
+                $PTParams['SourceRange'] = $sourceRange
+            }
             Add-PivotTable @PTParams -NoLegend
         } else {
             Write-Debug "  Warning: Disks worksheet not found - skipping P4 VM Disks PivotTable"
@@ -626,11 +767,13 @@ function Build-ARIExcelChart {
     }
 
     if ($Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Virtual Machines' }) {
+        $VirtualMachinesWS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Virtual Machines' } | Select-Object -First 1
+        $sourceRange = Get-PivotTableSourceRange -Worksheet $VirtualMachinesWS
         $P5Name = 'Virtual Machines'
         $PTParams = @{
             PivotTableName          = "P5"
             Address                 = $excel.Overview.cells["CL7"] # top-left corner of the table
-            SourceWorkSheet         = $excel.'Virtual Machines'
+            SourceWorkSheet         = $VirtualMachinesWS
             PivotRows               = @("VM Size")
             PivotData               = @{"Resource U" = "Sum" }
             PivotTableStyle         = $tableStyle
@@ -648,13 +791,18 @@ function Build-ARIExcelChart {
             ChartRowOffSetPixels    = 5
             ChartColumnOffSetPixels = 5
         }
+        if ($null -ne $sourceRange) {
+            $PTParams['SourceRange'] = $sourceRange
+        }
         Add-PivotTable @PTParams
     } else {
+        $VirtualNetworksWS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Virtual Networks' } | Select-Object -First 1
+        $sourceRange = Get-PivotTableSourceRange -Worksheet $VirtualNetworksWS
         $P5Name = 'Virtual Networks'
         $PTParams = @{
             PivotTableName          = "P5"
             Address                 = $excel.Overview.cells["CL7"] # top-left corner of the table
-            SourceWorkSheet         = $excel.'Virtual Networks'
+            SourceWorkSheet         = $VirtualNetworksWS
             PivotRows               = @("Name")
             PivotData               = @{"Available IPs" = "Sum" }
             PivotTableStyle         = $tableStyle
@@ -672,6 +820,9 @@ function Build-ARIExcelChart {
             ChartRowOffSetPixels    = 5
             ChartColumnOffSetPixels = 5
         }
+        if ($null -ne $sourceRange) {
+            $PTParams['SourceRange'] = $sourceRange
+        }
         Add-PivotTable @PTParams
     }
 
@@ -687,6 +838,7 @@ function Build-ARIExcelChart {
     if($IncludeCosts.IsPresent)
         {
             if ($null -ne $SubscriptionsWS) {
+                $sourceRange = Get-PivotTableSourceRange -Worksheet $SubscriptionsWS
                 $P6Name = 'Cost per Month'
                 $PTParams = @{
                     PivotTableName          = "P6"
@@ -710,6 +862,9 @@ function Build-ARIExcelChart {
                     ChartRowOffSetPixels    = 0
                     ChartColumnOffSetPixels = 0
                 }
+                if ($null -ne $sourceRange) {
+                    $PTParams['SourceRange'] = $sourceRange
+                }
                 Add-PivotTable @PTParams
             } else {
                 Write-Debug "  Warning: Subscriptions worksheet not found - skipping P6 Cost per Month PivotTable"
@@ -718,6 +873,7 @@ function Build-ARIExcelChart {
     else
         {
             if ($null -ne $SubscriptionsWS) {
+                $sourceRange = Get-PivotTableSourceRange -Worksheet $SubscriptionsWS
                 $P6Name = 'Resources by Location'
                 $PTParams = @{
                     PivotTableName          = "P6"
@@ -740,6 +896,9 @@ function Build-ARIExcelChart {
                     ChartRowOffSetPixels    = 0
                     ChartColumnOffSetPixels = 0
                 }
+                if ($null -ne $sourceRange) {
+                    $PTParams['SourceRange'] = $sourceRange
+                }
                 Add-PivotTable @PTParams
             } else {
                 Write-Debug "  Warning: Subscriptions worksheet not found - skipping P6 Resources by Location PivotTable"
@@ -754,11 +913,13 @@ function Build-ARIExcelChart {
     }
 
     if ($Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Virtual Machines' }) {
+        $VirtualMachinesWS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Virtual Machines' } | Select-Object -First 1
+        $sourceRange = Get-PivotTableSourceRange -Worksheet $VirtualMachinesWS
         $P7Name = 'Virtual Machines'
         $PTParams = @{
             PivotTableName          = "P7"
             Address                 = $excel.Overview.cells["CY5"] # top-left corner of the table
-            SourceWorkSheet         = $excel.'Virtual Machines'
+            SourceWorkSheet         = $VirtualMachinesWS
             PivotRows               = @("OS Type")
             PivotData               = @{"Resource U" = "Sum" }
             PivotTableStyle         = $tableStyle
@@ -776,6 +937,9 @@ function Build-ARIExcelChart {
             ChartRowOffSetPixels    = 5
             ChartColumnOffSetPixels = 0
         }
+        if ($null -ne $sourceRange) {
+            $PTParams['SourceRange'] = $sourceRange
+        }
         Add-PivotTable @PTParams
     }
 
@@ -783,11 +947,13 @@ function Build-ARIExcelChart {
     $DrawP7.RichText.Add($P7Name) | Out-Null
 
     if ($Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Advisor' }) {
+        $AdvisorWS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Advisor' } | Select-Object -First 1
+        $sourceRange = Get-PivotTableSourceRange -Worksheet $AdvisorWS
         $P8Name = 'Advisories'
         $PTParams = @{
             PivotTableName          = "P8"
             Address                 = $excel.Overview.cells["DE5"] # top-left corner of the table
-            SourceWorkSheet         = $excel.Advisor
+            SourceWorkSheet         = $AdvisorWS
             PivotRows               = @("Impact")
             PivotData               = @{"Impact" = "Count" }
             PivotTableStyle         = $tableStyle
@@ -804,14 +970,19 @@ function Build-ARIExcelChart {
             ChartRowOffSetPixels    = 5
             ChartColumnOffSetPixels = 0
         }
+        if ($null -ne $sourceRange) {
+            $PTParams['SourceRange'] = $sourceRange
+        }
         Add-PivotTable @PTParams -NoLegend
     }
     elseif ($Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Load Balancers' }) {
+        $LoadBalancersWS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Load Balancers' } | Select-Object -First 1
+        $sourceRange = Get-PivotTableSourceRange -Worksheet $LoadBalancersWS
         $P8Name = 'Load Balancers'
         $PTParams = @{
             PivotTableName          = "P8"
             Address                 = $excel.Overview.cells["DE5"] # top-left corner of the table
-            SourceWorkSheet         = $excel.'Load Balancers'
+            SourceWorkSheet         = $LoadBalancersWS
             PivotRows               = @("Usage")
             PivotData               = @{"Usage" = "Count" }
             PivotTableStyle         = $tableStyle
@@ -828,14 +999,19 @@ function Build-ARIExcelChart {
             ChartRowOffSetPixels    = 5
             ChartColumnOffSetPixels = 0
         }
+        if ($null -ne $sourceRange) {
+            $PTParams['SourceRange'] = $sourceRange
+        }
         Add-PivotTable @PTParams -NoLegend
     }
     elseif ($Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Virtual Machines' }) {
+        $VirtualMachinesWS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Virtual Machines' } | Select-Object -First 1
+        $sourceRange = Get-PivotTableSourceRange -Worksheet $VirtualMachinesWS
         $P8Name = 'VMs per Region'
         $PTParams = @{
             PivotTableName          = "P8"
             Address                 = $excel.Overview.cells["DE5"] # top-left corner of the table
-            SourceWorkSheet         = $excel.'Virtual Machines'
+            SourceWorkSheet         = $VirtualMachinesWS
             PivotRows               = @("Location")
             PivotData               = @{"Resource U" = "Sum" }
             PivotTableStyle         = $tableStyle
@@ -852,12 +1028,16 @@ function Build-ARIExcelChart {
             ChartRowOffSetPixels    = 5
             ChartColumnOffSetPixels = 0
         }
+        if ($null -ne $sourceRange) {
+            $PTParams['SourceRange'] = $sourceRange
+        }
         Add-PivotTable @PTParams -NoLegend
     }
     else{
         # Safely check if Subscriptions worksheet exists before accessing
         $SubscriptionsWS = $Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Subscriptions' } | Select-Object -First 1
         if ($null -ne $SubscriptionsWS) {
+            $sourceRange = Get-PivotTableSourceRange -Worksheet $SubscriptionsWS
             $P8Name = 'Resources per Region'
             $PTParams = @{
                 PivotTableName          = "P8"
@@ -879,6 +1059,9 @@ function Build-ARIExcelChart {
                 ChartRowOffSetPixels    = 5
                 ChartColumnOffSetPixels = 0
             }
+            if ($null -ne $sourceRange) {
+                $PTParams['SourceRange'] = $sourceRange
+            }
             Add-PivotTable @PTParams -NoLegend
         } else {
             Write-Debug "  Warning: Subscriptions worksheet not found - skipping P8 Resources per Region PivotTable"
@@ -890,11 +1073,13 @@ function Build-ARIExcelChart {
     $DrawP8.RichText.Add($P8Name) | Out-Null
 
     if ($Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Virtual Machines' }) {
+        $VirtualMachinesWS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Virtual Machines' } | Select-Object -First 1
+        $sourceRange = Get-PivotTableSourceRange -Worksheet $VirtualMachinesWS
         $P9Name = 'Virtual Machines'
         $PTParams = @{
             PivotTableName          = "P9"
             Address                 = $excel.Overview.cells["BM5"] # top-left corner of the table
-            SourceWorkSheet         = $excel.'Virtual Machines'
+            SourceWorkSheet         = $VirtualMachinesWS
             PivotRows               = @("Boot Diagnostics")
             PivotData               = @{"Resource U" = "Sum" }
             PivotTableStyle         = $tableStyle
@@ -911,6 +1096,9 @@ function Build-ARIExcelChart {
             ChartWidth              = 315
             ChartRowOffSetPixels    = 5
             ChartColumnOffSetPixels = 0
+        }
+        if ($null -ne $sourceRange) {
+            $PTParams['SourceRange'] = $sourceRange
         }
         Add-PivotTable @PTParams
     }

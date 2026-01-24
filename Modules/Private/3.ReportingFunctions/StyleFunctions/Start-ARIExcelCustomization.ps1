@@ -110,6 +110,16 @@ function Start-ARIExcelCustomization {
 
     Build-ARIExcelChart -Excel $Excel -Overview $Overview -IncludeCosts $IncludeCosts
 
+    # CRITICAL: Explicitly save the Excel package before closing to ensure pivot caches are properly written
+    # EPPlus may not properly flush pivot cache data to disk if we just call Close-ExcelPackage
+    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Explicitly saving Excel package to ensure pivot caches are written.')
+    try {
+        $Excel.Save()
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Excel package saved successfully.')
+    } catch {
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Warning: Could not explicitly save Excel package: ' + $_.Exception.Message)
+    }
+
     Close-ExcelPackage $Excel
 
     if(!$RunLite)

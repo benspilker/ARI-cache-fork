@@ -32,7 +32,11 @@ function Build-ARIInitialBlock {
     $User = (get-azcontext -WarningAction SilentlyContinue -InformationAction SilentlyContinue | Select-Object -Property Account -Unique).Account.Id
     $DebugPreference = 'Continue'
 
-    $WS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Overview' }
+    $WS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Overview' } | Select-Object -First 1
+    if ($null -eq $WS) {
+        Write-Error "Overview worksheet not found in Excel workbook"
+        return
+    }
 
     $cell = $WS.Cells | Where-Object {$_.Address -like 'A*' -and $_.Address -notin 'A1','A2','A3','A4','A5','A6'}
     foreach ($item in $cell) {
@@ -42,10 +46,14 @@ function Build-ARIInitialBlock {
     }
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Creating Overall Panel.')
-    $Egg = $WS.Cells | Where-Object {$_.Address -eq 'BR75'}
-    $Egg.AddComment('Created with a lot of effort and hard work, we hope you enjoy it.','.') | Out-Null
-    $Egg = $WS.Cells | Where-Object {$_.Address -eq 'BR76'}
-    $Egg.AddComment('By: Claudio Merola and Renato Gregio','.') | Out-Null
+    $Egg = $WS.Cells | Where-Object {$_.Address -eq 'BR75'} | Select-Object -First 1
+    if ($null -ne $Egg) {
+        $Egg.AddComment('Created with a lot of effort and hard work, we hope you enjoy it.','.') | Out-Null
+    }
+    $Egg = $WS.Cells | Where-Object {$_.Address -eq 'BR76'} | Select-Object -First 1
+    if ($null -ne $Egg) {
+        $Egg.AddComment('By: Claudio Merola and Renato Gregio','.') | Out-Null
+    }
 
     $TabDraw = $WS.Drawings.AddShape('TP0', 'RoundRect')
     $TabDraw.SetSize(125, 25)
@@ -121,25 +129,8 @@ function Build-ARIInitialBlock {
     $txt.ComplexFont = $Font
     $txt.LatinFont = $Font
 
-    $txt = $Draw.RichText.Add('Data Gathering Time: ')
-    $txt.Size = 11
-    $txt.ComplexFont = $Font
-    $txt.LatinFont = $Font
-
-    $txt = $Draw.RichText.Add($ExtractTime + "`n")
-    $txt.Size = 12
-    $txt.ComplexFont = $Font
-    $txt.LatinFont = $Font
-
-    $txt = $Draw.RichText.Add('Data Processing Time: ')
-    $txt.Size = 11
-    $txt.ComplexFont = $Font
-    $txt.LatinFont = $Font
-
-    $txt = $Draw.RichText.Add($ProcessingTime + "`n")
-    $txt.Size = 12
-    $txt.ComplexFont = $Font
-    $txt.LatinFont = $Font
+    # Data Gathering Time and Data Processing Time removed per user request
+    # These values were showing "0 Seconds" and are not needed
 
     $txt = $Draw.RichText.Add('Data Reporting Time: ')
     $txt.Size = 11

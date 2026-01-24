@@ -143,16 +143,28 @@ function Start-ARIExcelOrdening {
         }
     }
 
-    $WS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Overview' }
+    $WS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Overview' } | Select-Object -First 1
+    if ($null -eq $WS) {
+        Write-Debug "  Warning: Overview worksheet not found - skipping TP00 drawing creation"
+        Close-ExcelPackage $Excel
+        return
+    }
 
-    $WS.SetValue(75,70,'')
-    $WS.SetValue(76,70,'')
-    $WS.View.ShowGridLines = $false
+    # TP00 drawing may have already been created in Start-ARIExcelCustomization before Build-ARIExcelChart
+    # Check if it exists before creating it
+    $existingTP00 = $WS.Drawings | Where-Object { $_.Name -eq 'TP00' } | Select-Object -First 1
+    if ($null -eq $existingTP00) {
+        $WS.SetValue(75,70,'')
+        $WS.SetValue(76,70,'')
+        $WS.View.ShowGridLines = $false
 
-    $TabDraw = $WS.Drawings.AddShape('TP00', 'RoundRect')
-    $TabDraw.SetSize(130 , 78)
-    $TabDraw.SetPosition(1, 0, 0, 0)
-    $TabDraw.TextAlignment = 'Center'
+        $TabDraw = $WS.Drawings.AddShape('TP00', 'RoundRect')
+        $TabDraw.SetSize(130 , 78)
+        $TabDraw.SetPosition(1, 0, 0, 0)
+        $TabDraw.TextAlignment = 'Center'
+    } else {
+        Write-Debug "  TP00 drawing already exists - skipping creation"
+    }
 
     Close-ExcelPackage $Excel
 
