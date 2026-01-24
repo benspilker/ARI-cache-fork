@@ -20,11 +20,25 @@ Authors: Claudio Merola
 function Start-ARIPolicyJob {
     param($Subscriptions, $PolicySetDef, $PolicyAssign, $PolicyDef)
 
+    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Starting with PolicyDef count: ' + $(if ($null -eq $PolicyDef) { 'null' } elseif ($PolicyDef -is [System.Array]) { $PolicyDef.Count } else { '1 (not array)' }))
+    
     # Ensure PolicyDef is an array for safe iteration
     if ($null -eq $PolicyDef) {
         $PolicyDef = @()
     } elseif ($PolicyDef -isnot [System.Array]) {
         $PolicyDef = @($PolicyDef)
+    }
+    
+    # Debug: Show sample PolicyDef structure
+    if ($PolicyDef.Count -gt 0) {
+        $samplePolDef = $PolicyDef[0]
+        $sampleId = $null
+        if ($samplePolDef -is [PSCustomObject] -and $samplePolDef.PSObject.Properties['id']) {
+            $sampleId = $samplePolDef.id
+        } elseif (($samplePolDef -is [System.Collections.Hashtable] -or $samplePolDef -is [System.Collections.IDictionary]) -and $samplePolDef.ContainsKey('id')) {
+            $sampleId = $samplePolDef['id']
+        }
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Sample PolicyDef ID format: ' + $(if ($sampleId) { $sampleId } else { 'NO_ID_FOUND'))
     }
 
     # Create poltmp - handle cases where properties might be at root level or nested
@@ -75,8 +89,22 @@ function Start-ARIPolicyJob {
     
     # Debug: Show sample of PolicyDef IDs to help diagnose matching issues
     if ($poltmp.Count -gt 0) {
-        $sampleIds = $poltmp | Select-Object -First 3 | ForEach-Object { $_.id }
-        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Sample PolicyDef IDs: ' + ($sampleIds -join ', '))
+        $sampleIds = $poltmp | Select-Object -First 5 | ForEach-Object { $_.id }
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Sample PolicyDef IDs (first 5): ' + ($sampleIds -join ' | '))
+        
+        # Also show GUIDs extracted from sample IDs
+        $sampleGuids = $sampleIds | ForEach-Object {
+            if ($_ -match 'policydefinitions/([a-f0-9\-]{36})$') {
+                $Matches[1]
+            } elseif ($_ -match '^[a-f0-9\-]{36}$') {
+                $_
+            } else {
+                'NO_GUID'
+            }
+        }
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Sample PolicyDef GUIDs (first 5): ' + ($sampleGuids -join ' | '))
+    } else {
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: WARNING - poltmp is empty! PolicyDef count: ' + $PolicyDef.Count)
     }
 
     # Safely access PolicyAssign.policyAssignments
@@ -321,13 +349,41 @@ function Start-ARIPolicyJob {
                                 $Pol = $null
                             }
                         } else {
+                            # More detailed debug: show what we tried to match against
+                            $debugSampleIds = $poltmp | Select-Object -First 3 | ForEach-Object { $_.id }
+                            $debugSampleGuids = $debugSampleIds | ForEach-Object {
+                                if ($_ -match 'policydefinitions/([a-f0-9\-]{36})$') {
+                                    $Matches[1]
+                                } elseif ($_ -match '^[a-f0-9\-]{36}$') {
+                                    $_
+                                } else {
+                                    'NO_GUID'
+                                }
+                            }
                             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: No matching PolicyDef found for policyDefinitionId: ' + $policyDefId + ' (extracted GUID: ' + $(if ($policyDefGuid) { $policyDefGuid } else { 'none' }) + ')')
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Searched in ' + $poltmp.Count + ' PolicyDef(s). Sample IDs: ' + ($debugSampleIds -join ' | ') + ' | Sample GUIDs: ' + ($debugSampleGuids -join ' | '))
+                            
+                            # Workaround: Create a minimal PolicyDef object from the policyDefinitionId
+                            # This allows Policy records to be created even when PolicyDef isn't found
+                            # (e.g., when PolicyDef is at management group level but only subscription-level PolicyDefs were collected)
+                            $Pol = [PSCustomObject]@{
+                                displayName = if ($policyDefId -match '/([^/]+)$') { $Matches[1] } else { 'Unknown Policy' }
+                                policyType = if ($policyDefId -match '/managementgroups/') { 'Custom' } else { 'BuiltIn' }
+                                mode = 'All'
+                                version = ''
+                                metadata = @{
+                                    deprecated = ''
+                                    category = ''
+                                }
+                            }
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Created minimal PolicyDef object for missing PolicyDef: ' + $policyDefId)
                         }
                     } else {
                         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: policyDefinitionId is null or empty')
                     }
                     
-                    if(![string]::IsNullOrEmpty($Pol))
+                    # Check if Pol is set (can be PSCustomObject or Hashtable, not just string)
+                    if ($null -ne $Pol)
                         {
                             $processedPolicyDefs++
                             # Safely access results.resourceDetails
