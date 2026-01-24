@@ -194,9 +194,31 @@ function Start-ARIExcelJob {
                         Start-Sleep -Milliseconds 25
                         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+"Running Module: '$ModName'. Excel Rows: $ModuleResourceCount")
 
+                        # Ensure the output directory exists before writing
+                        $fileDir = Split-Path -Path $File -Parent
+                        if (-not (Test-Path $fileDir)) {
+                            New-Item -ItemType Directory -Path $fileDir -Force | Out-Null
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+"Created directory: $fileDir")
+                        }
+
                         $ScriptBlock = [Scriptblock]::Create($ModuleData)
 
-                        Invoke-Command -ScriptBlock $ScriptBlock -ArgumentList $PSScriptRoot, $null, $InTag, $null, $null, 'Reporting', $File, $SmaResources, $TableStyle, $null
+                        try {
+                            Invoke-Command -ScriptBlock $ScriptBlock -ArgumentList $PSScriptRoot, $null, $InTag, $null, $null, 'Reporting', $File, $SmaResources, $TableStyle, $null -ErrorAction Stop
+                            
+                            # Small delay after Export-Excel to ensure file is fully written and closed
+                            # This helps prevent file lock issues when the next module tries to write
+                            Start-Sleep -Milliseconds 100
+                            
+                            # Force garbage collection to release any file handles
+                            [System.GC]::Collect()
+                            [System.GC]::WaitForPendingFinalizers()
+                        } catch {
+                            $errorMsg = $_.Exception.Message
+                            Write-Error "Module '$ModName' failed: $errorMsg"
+                            Write-Error "Stack trace: $($_.ScriptStackTrace)"
+                            throw
+                        }
 
                     }
 
