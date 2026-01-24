@@ -27,7 +27,48 @@ function Start-ARIPolicyJob {
         $PolicyDef = @($PolicyDef)
     }
 
-    $poltmp = $PolicyDef | Select-Object -Property id,properties -Unique
+    # Create poltmp - handle cases where properties might be at root level or nested
+    $poltmp = @()
+    foreach ($polDefItem in $PolicyDef) {
+        if ($null -eq $polDefItem) { continue }
+        
+        $polId = $null
+        $polProperties = $null
+        
+        # Get id
+        if ($polDefItem -is [PSCustomObject] -and $polDefItem.PSObject.Properties['id']) {
+            $polId = $polDefItem.id
+        } elseif (($polDefItem -is [System.Collections.Hashtable] -or $polDefItem -is [System.Collections.IDictionary]) -and $polDefItem.ContainsKey('id')) {
+            $polId = $polDefItem['id']
+        }
+        
+        # Get properties - check nested first, then root level
+        if ($polDefItem -is [PSCustomObject]) {
+            if ($polDefItem.PSObject.Properties['properties'] -and $null -ne $polDefItem.properties) {
+                $polProperties = $polDefItem.properties
+            } else {
+                # Properties might be at root level - use the entire object as properties
+                $polProperties = $polDefItem
+            }
+        } elseif ($polDefItem -is [System.Collections.Hashtable] -or $polDefItem -is [System.Collections.IDictionary]) {
+            if ($polDefItem.ContainsKey('properties') -and $null -ne $polDefItem['properties']) {
+                $polProperties = $polDefItem['properties']
+            } else {
+                # Properties might be at root level - use the entire object as properties
+                $polProperties = $polDefItem
+            }
+        }
+        
+        if ($null -ne $polId -and $null -ne $polProperties) {
+            $poltmp += [PSCustomObject]@{
+                id = $polId
+                properties = $polProperties
+            }
+        }
+    }
+    
+    # Remove duplicates by id
+    $poltmp = $poltmp | Select-Object -Unique -Property id
 
     # Safely access PolicyAssign.policyAssignments
     $policyAssignments = @()
