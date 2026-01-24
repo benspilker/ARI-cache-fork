@@ -100,6 +100,7 @@ function Start-ARIExtraReports {
     }
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Checking if Should Generate Policy Sheet.')
+    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'SkipPolicy parameter: IsPresent=' + $SkipPolicy.IsPresent + ', Value=' + $SkipPolicy)
     if (!$SkipPolicy.IsPresent) {
         # Check if Policy data is available from processed Policy.json cache (array format)
         # This happens when Policy.json contains processed records instead of raw PolicyAssign/PolicyDef/PolicySetDef
@@ -192,13 +193,10 @@ function Start-ARIExtraReports {
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Loaded ' + $Pol.Count + ' processed Policy record(s) from cache')
                 } elseif ($policyCacheData.PSObject.Properties['PolicyAssign'] -or $policyCacheData.PSObject.Properties['PolicyDef']) {
                     # Raw Policy data found - Policy job should process it
+                    $hasRawPolicyData = $true
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found raw Policy data in cache (PolicyAssign/PolicyDef format) - Policy job will process it')
                     # Don't set $Pol here - let the Policy job process it
                     # Ensure we check for Policy job even if $Pol is null
-                } elseif ($policyCacheData.PSObject.Properties['PolicyAssign'] -or $policyCacheData.PSObject.Properties['PolicyDef']) {
-                    # Raw Policy data found - Policy job should process it
-                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found raw Policy data in cache (PolicyAssign/PolicyDef format) - Policy job will process it')
-                    # Don't set $Pol here - let the Policy job process it
                 }
             } catch {
                 Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error loading Policy cache: ' + $_.Exception.Message)
@@ -238,8 +236,10 @@ function Start-ARIExtraReports {
         }
         # Otherwise, check for Policy job (for raw Policy data processing)
         # Use the $policyJobExists variable we checked earlier, or check again if job exists
-        elseif ($policyJobExists -or (get-job | Where-Object {$_.Name -eq 'Policy'}))
+        # Also check if we have raw Policy data - in that case, we MUST have a Policy job
+        elseif ($hasRawPolicyData -or $policyJobExists -or (get-job | Where-Object {$_.Name -eq 'Policy'}))
             {
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Policy sheet generation path: hasRawPolicyData=' + $hasRawPolicyData + ', policyJobExists=' + $policyJobExists)
                 Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Generating Policy Sheet from Policy job.')
 
                 # Wait for Policy job to complete if it's still running
@@ -279,11 +279,72 @@ function Start-ARIExtraReports {
                 $Pol = Receive-Job -Name 'Policy' -ErrorAction SilentlyContinue
                 Remove-Job -Name 'Policy' -ErrorAction SilentlyContinue | Out-Null
                 
+                # If Policy job returned null and we have raw Policy data, process it directly
+                if ($null -eq $Pol -and $hasRawPolicyData -and $null -ne $policyCacheFile -and (Test-Path $policyCacheFile)) {
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Policy job returned null - processing raw Policy data directly from cache')
+                    try {
+                        $policyCacheData = Get-Content $policyCacheFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+                        if ($policyCacheData.PSObject.Properties['PolicyAssign'] -or $policyCacheData.PSObject.Properties['PolicyDef']) {
+                            # Get Subscriptions from script scope or parameter
+                            $SubsForPolicy = $null
+                            try {
+                                $subsVar = Get-Variable -Name 'Subscriptions' -Scope 'Script' -ErrorAction SilentlyContinue
+                                if ($null -ne $subsVar) {
+                                    $SubsForPolicy = $subsVar.Value
+                                }
+                            } catch {
+                                # Try to get from function parameter
+                                if ($null -ne $Subscriptions) {
+                                    $SubsForPolicy = $Subscriptions
+                                }
+                            }
+                            
+                            # Ensure Subscriptions is an array
+                            if ($null -eq $SubsForPolicy) {
+                                $SubsForPolicy = @()
+                            } elseif ($SubsForPolicy -isnot [System.Array]) {
+                                $SubsForPolicy = @($SubsForPolicy)
+                            }
+                            
+                            # Extract raw Policy data
+                            $PolicyAssignRaw = if ($policyCacheData.PSObject.Properties['PolicyAssign']) { $policyCacheData.PolicyAssign } else { @{ policyAssignments = @() } }
+                            $PolicyDefRaw = if ($policyCacheData.PSObject.Properties['PolicyDef']) { $policyCacheData.PolicyDef } else { @() }
+                            $PolicySetDefRaw = if ($policyCacheData.PSObject.Properties['PolicySetDef']) { $policyCacheData.PolicySetDef } else { @() }
+                            
+                            # Ensure arrays
+                            if ($null -eq $PolicyDefRaw) { $PolicyDefRaw = @() }
+                            elseif ($PolicyDefRaw -isnot [System.Array]) { $PolicyDefRaw = @($PolicyDefRaw) }
+                            if ($null -eq $PolicySetDefRaw) { $PolicySetDefRaw = @() }
+                            elseif ($PolicySetDefRaw -isnot [System.Array]) { $PolicySetDefRaw = @($PolicySetDefRaw) }
+                            
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Calling Start-ARIPolicyJob directly with ' + $SubsForPolicy.Count + ' subscription(s)')
+                            $Pol = Start-ARIPolicyJob -Subscriptions $SubsForPolicy -PolicySetDef $PolicySetDefRaw -PolicyAssign $PolicyAssignRaw -PolicyDef $PolicyDefRaw
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob returned ' + $Pol.Count + ' Policy record(s)')
+                        }
+                    } catch {
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error processing raw Policy data directly: ' + $_.Exception.Message)
+                        $Pol = @()
+                    }
+                }
+                
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Received Policy job results: Pol is null=' + ($null -eq $Pol))
+                if ($null -ne $Pol) {
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Pol type=' + ($Pol.GetType().Name))
+                }
+                
                 # Ensure Pol is an array for safe handling
                 if ($null -eq $Pol) {
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'WARNING: Policy job returned null results')
                     $Pol = @()
                 } elseif ($Pol -isnot [System.Array]) {
                     $Pol = @($Pol)
+                }
+                
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Policy data ready for sheet generation: Count=' + $Pol.Count)
+                
+                # If Policy job returned empty results, log warning but still try to generate sheet
+                if ($Pol.Count -eq 0) {
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'WARNING: Policy job returned empty results - Policy sheet will be empty')
                 }
 
                 # Aggressive memory cleanup after receiving Policy data but before Excel generation

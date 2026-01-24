@@ -200,15 +200,15 @@ function Build-ARIExcelChart {
                 PivotTableName          = "P0"
                 Address                 = $excel.Overview.cells["BG5"] # top-left corner of the table
                 SourceWorkSheet         = $OutagesWS
-                PivotRows               = @("Impacted Services")
-                PivotData               = @{"Impacted Services" = "Count" }
+                PivotRows               = @("Event Type")
+                PivotData               = @{"Outage ID" = "Count" }
                 PivotTableStyle         = $tableStyle
                 IncludePivotChart       = $true
                 ChartType               = "BarStacked3D"
                 ChartRow                = 13 # place the chart below row 22nd
                 ChartColumn             = 2
                 Activate                = $true
-                PivotFilter             = 'Subscription'
+                PivotFilter             = 'Subscription', 'Status'
                 ChartTitle              = 'Outages (Last 6 Months)'
                 ShowPercent             = $true
                 ChartHeight             = 275
@@ -653,42 +653,11 @@ function Build-ARIExcelChart {
     $DrawP3 = $WS.Drawings | Where-Object { $_.Name -eq 'TP3' }
     $DrawP3.RichText.Add($P3Name) | Out-Null
 
-    if (($Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Outages' }) -and $Overview -eq 1) {
-        # Safely check if Outages worksheet exists before accessing
-        $OutagesWS = $Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Outages' } | Select-Object -First 1
-        if ($null -ne $OutagesWS) {
-            $sourceRange = Get-PivotTableSourceRange -Worksheet $OutagesWS
-            $P4Name = 'Outages'
-            $PTParams = @{
-                PivotTableName          = "P4"
-                Address                 = $excel.Overview.cells["CF5"] # top-left corner of the table
-                SourceWorkSheet         = $OutagesWS
-                PivotRows               = @("Subscription")
-                PivotData               = @{"Outage ID" = "Count" }
-                PivotTableStyle         = $tableStyle
-                IncludePivotChart       = $true
-                ChartType               = "ColumnStacked3D"
-                ChartRow                = 47 # place the chart below row 22nd
-                ChartColumn             = 11
-                Activate                = $true
-                PivotFilter             = 'Event Level'
-                ChartTitle              = 'Outages per Subscription'
-                ShowPercent             = $true
-                ChartHeight             = 255
-                ChartWidth              = 315
-                ChartRowOffSetPixels    = 5
-                ChartColumnOffSetPixels = 5
-            }
-            if ($null -ne $sourceRange) {
-                $PTParams['SourceRange'] = $sourceRange
-            }
-            Add-PivotTable @PTParams -NoLegend
-        } else {
-            Write-Debug "  Warning: Outages worksheet not found - skipping P4 Outages PivotTable"
-            $P4Name = $null
-        }
-    }
-    elseif (($Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Quota Usage' }) -and $Overview -eq 2) {
+    # Removed duplicate Outages chart (P4) - P0 chart already shows Outages data
+    # Keeping P0 chart ('Outages (Last 6 Months)') as it provides better insights
+    # Initialize P4Name to null, then check for other P4 chart options
+    $P4Name = $null
+    if (($Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Quota Usage' }) -and $Overview -eq 2) {
         # Safely check if Quota Usage worksheet exists before accessing
         $QuotaUsageWS = $Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Quota Usage' } | Select-Object -First 1
         if ($null -ne $QuotaUsageWS) {
@@ -783,7 +752,7 @@ function Build-ARIExcelChart {
             ChartColumn             = 16
             Activate                = $true
             NoLegend                = $true
-            ChartTitle              = 'Virtual Machines by Serie'
+            ChartTitle              = 'Virtual Machines by Series'
             PivotFilter             = 'OS Type', 'Location', 'Power State'
             ShowPercent             = $true
             ChartHeight             = 775
@@ -1072,38 +1041,16 @@ function Build-ARIExcelChart {
     $DrawP8 = $WS.Drawings | Where-Object { $_.Name -eq 'TP8' }
     $DrawP8.RichText.Add($P8Name) | Out-Null
 
-    if ($Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Virtual Machines' }) {
-        $VirtualMachinesWS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Virtual Machines' } | Select-Object -First 1
-        $sourceRange = Get-PivotTableSourceRange -Worksheet $VirtualMachinesWS
-        $P9Name = 'Virtual Machines'
-        $PTParams = @{
-            PivotTableName          = "P9"
-            Address                 = $excel.Overview.cells["BM5"] # top-left corner of the table
-            SourceWorkSheet         = $VirtualMachinesWS
-            PivotRows               = @("Boot Diagnostics")
-            PivotData               = @{"Resource U" = "Sum" }
-            PivotTableStyle         = $tableStyle
-            IncludePivotChart       = $true
-            ChartType               = "Pie3D"
-            ChartRow                = 47
-            ChartColumn             = 24
-            Activate                = $true
-            NoLegend                = $true
-            ChartTitle              = 'Boot Diagnostics'
-            PivotFilter             = 'Location'
-            ShowPercent             = $true
-            ChartHeight             = 255
-            ChartWidth              = 315
-            ChartRowOffSetPixels    = 5
-            ChartColumnOffSetPixels = 0
-        }
-        if ($null -ne $sourceRange) {
-            $PTParams['SourceRange'] = $sourceRange
-        }
-        Add-PivotTable @PTParams
-    }
+    # Removed Boot Diagnostics chart (P9) - no data available and provides limited insight
+    $P9Name = $null
 
     $DrawP9 = $WS.Drawings | Where-Object { $_.Name -eq 'TP9' }
-    $DrawP9.RichText.Add($P9Name) | Out-Null
+    if ($null -ne $DrawP9) {
+        if ($null -ne $P9Name) {
+            $DrawP9.RichText.Add($P9Name) | Out-Null
+        } else {
+            Write-Debug "  Warning: P9Name not set - skipping TP9 rich text"
+        }
+    }
 
 }
