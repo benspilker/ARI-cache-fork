@@ -986,6 +986,21 @@ Function Invoke-CachedARI-Patched {
                                 }
                             }
                             Write-Host "[UseExistingCache] Collected $PolicyCount Policy assignment(s) via API call" -ForegroundColor Green
+                            
+                            # Save Policy data to Policy.json so Start-ARIExtraReports can find it
+                            try {
+                                $policyJsonPath = Join-Path $ReportCache 'Policy.json'
+                                $policyJsonData = @{
+                                    PolicyAssign = $PolicyAssign
+                                    PolicyDef = $PolicyDef
+                                    PolicySetDef = $PolicySetDef
+                                }
+                                $policyJsonContent = $policyJsonData | ConvertTo-Json -Depth 100 -Compress:$false
+                                Set-Content -Path $policyJsonPath -Value $policyJsonContent -Force -ErrorAction Stop
+                                Write-Host "[UseExistingCache] Saved Policy data to Policy.json for reporting" -ForegroundColor Green
+                            } catch {
+                                Write-Host "[UseExistingCache] Warning: Failed to save Policy.json: $_" -ForegroundColor Yellow
+                            }
                         } else {
                             # SkipPolicy is true - initialize empty Policy variables
                             $PolicyAssign = @{ policyAssignments = @() }
