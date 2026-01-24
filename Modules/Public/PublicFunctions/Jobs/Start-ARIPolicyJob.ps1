@@ -38,7 +38,7 @@ function Start-ARIPolicyJob {
         } elseif (($samplePolDef -is [System.Collections.Hashtable] -or $samplePolDef -is [System.Collections.IDictionary]) -and $samplePolDef.ContainsKey('id')) {
             $sampleId = $samplePolDef['id']
         }
-        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Sample PolicyDef ID format: ' + $(if ($sampleId) { $sampleId } else { 'NO_ID_FOUND'))
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Sample PolicyDef ID format: ' + $(if ($sampleId) { $sampleId } else { 'NO_ID_FOUND' }))
     }
 
     # Create poltmp - handle cases where properties might be at root level or nested
