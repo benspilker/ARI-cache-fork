@@ -891,9 +891,9 @@ Function Invoke-CachedARI-Patched {
                         # In normal flow, Start-ARIExtractionOrchestration does: $Resources += $APIResults.ResourceHealth
                         # This works because PowerShell automatically expands array properties
                         # But we need to handle it explicitly here
-                        $allPolicyAssign = @()
-                        $allPolicyDef = @()
-                        $allPolicySetDef = @()
+                        $allPolicyAssign = [System.Collections.ArrayList]::new()
+                        $allPolicyDef = [System.Collections.ArrayList]::new()
+                        $allPolicySetDef = [System.Collections.ArrayList]::new()
                         
                         # Only extract Policy data if SkipPolicy is false
                         if (-not $skipPolicySwitch.IsPresent) {
@@ -909,10 +909,10 @@ Function Invoke-CachedARI-Patched {
                                         } else {
                                             @($apiResult.PolicyAssign)
                                         }
-                                        # Ensure each item is added individually to avoid type issues
+                                        # Use ArrayList.Add() method instead of += operator to avoid type issues
                                         foreach ($item in $policyAssignToAdd) {
                                             if ($null -ne $item) {
-                                                $allPolicyAssign += $item
+                                                $null = $allPolicyAssign.Add($item)
                                             }
                                         }
                                     }
@@ -923,10 +923,10 @@ Function Invoke-CachedARI-Patched {
                                         } else {
                                             @($apiResult.PolicyDef)
                                         }
-                                        # Ensure each item is added individually to avoid type issues
+                                        # Use ArrayList.Add() method instead of += operator to avoid type issues
                                         foreach ($item in $policyDefToAdd) {
                                             if ($null -ne $item) {
-                                                $allPolicyDef += $item
+                                                $null = $allPolicyDef.Add($item)
                                             }
                                         }
                                     }
@@ -937,19 +937,19 @@ Function Invoke-CachedARI-Patched {
                                         } else {
                                             @($apiResult.PolicySetDef)
                                         }
-                                        # Ensure each item is added individually to avoid type issues
+                                        # Use ArrayList.Add() method instead of += operator to avoid type issues
                                         foreach ($item in $policySetDefToAdd) {
                                             if ($null -ne $item) {
-                                                $allPolicySetDef += $item
+                                                $null = $allPolicySetDef.Add($item)
                                             }
                                         }
                                     }
                                 }
                             }
-                            # Set Policy variables (keep existing structure for compatibility)
-                            $PolicyAssign = $allPolicyAssign
-                            $PolicyDef = $allPolicyDef
-                            $PolicySetDef = $allPolicySetDef
+                            # Convert ArrayList back to array for compatibility
+                            $PolicyAssign = $allPolicyAssign.ToArray()
+                            $PolicyDef = $allPolicyDef.ToArray()
+                            $PolicySetDef = $allPolicySetDef.ToArray()
                             # Safely access Count property - handle null/empty cases
                             $PolicyCount = "0"
                             if ($null -ne $PolicyAssign) {
@@ -1238,18 +1238,46 @@ Function Invoke-CachedARI-Patched {
         # because Overview sheet creates pivot tables that reference all data sheets
         # Safely check if script-scoped variable exists and has data
         $hasOutagesData = $false
+        $outagesEvents = $null
+        
+        # Check if variable exists using Get-Variable (doesn't throw error if missing)
+        $varExists = $false
         try {
-            if (Get-Variable -Name 'ResourceHealthEventsForOutages' -Scope 'Script' -ErrorAction SilentlyContinue) {
-                if ($null -ne $script:ResourceHealthEventsForOutages -and $script:ResourceHealthEventsForOutages.Count -gt 0) {
-                    $hasOutagesData = $true
-                }
+            $varCheck = Get-Variable -Name 'ResourceHealthEventsForOutages' -Scope 'Script' -ErrorAction SilentlyContinue
+            if ($null -ne $varCheck) {
+                $varExists = $true
             }
         } catch {
-            # Variable doesn't exist - no outages data
-            $hasOutagesData = $false
+            $varExists = $false
         }
         
-        if ($hasOutagesData) {
+        # Only access the variable if it exists - use Get-Variable to safely retrieve value
+        if ($varExists) {
+            try {
+                # Use Get-Variable to safely retrieve the value without direct access
+                $varObj = Get-Variable -Name 'ResourceHealthEventsForOutages' -Scope 'Script' -ErrorAction Stop
+                $outagesEvents = $varObj.Value
+                
+                if ($null -ne $outagesEvents) {
+                    # Ensure it's an array and has items
+                    if ($outagesEvents -is [System.Array]) {
+                        if ($outagesEvents.Count -gt 0) {
+                            $hasOutagesData = $true
+                        }
+                    } elseif ($outagesEvents -isnot [System.Array] -and $null -ne $outagesEvents) {
+                        # Single item - convert to array
+                        $outagesEvents = @($outagesEvents)
+                        $hasOutagesData = $true
+                    }
+                }
+            } catch {
+                # Variable exists but can't be accessed - treat as no data
+                $hasOutagesData = $false
+                $outagesEvents = $null
+            }
+        }
+        
+        if ($hasOutagesData -and $null -ne $outagesEvents) {
                 Write-Host "[UseExistingCache] Generating Outages sheet directly using working logic..." -ForegroundColor Cyan
                 try {
                     # Ensure Subscriptions is available and is an array
@@ -1269,7 +1297,7 @@ Function Invoke-CachedARI-Patched {
                         }
                     }
                     
-                    foreach ($outage in $script:ResourceHealthEventsForOutages) {
+                    foreach ($outage in $outagesEvents) {
                         try {
                             # Safely extract impacted subscriptions
                             $ImpactedSubs = @()
