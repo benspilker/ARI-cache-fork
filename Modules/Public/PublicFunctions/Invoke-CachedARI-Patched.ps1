@@ -428,6 +428,31 @@ Function Invoke-CachedARI-Patched {
                         if ($null -eq $PolicyDef) { $PolicyDef = @() }
                         if ($null -eq $PolicySetDef) { $PolicySetDef = @() }
                         
+                        # Normalize PolicyAssign structure - Start-ARIExtraJobs expects object with policyAssignments property
+                        if ($null -ne $PolicyAssign) {
+                            if ($PolicyAssign -is [System.Array]) {
+                                # Direct array - wrap in hashtable with policyAssignments property
+                                $PolicyAssign = @{ policyAssignments = $PolicyAssign }
+                            } elseif ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
+                                # Already has structure, check for policyAssignments property
+                                $hasPolicyAssignments = $false
+                                if ($PolicyAssign -is [PSCustomObject]) {
+                                    $hasPolicyAssignments = $PolicyAssign.PSObject.Properties.Name -contains 'policyAssignments'
+                                } elseif ($PolicyAssign -is [System.Collections.Hashtable]) {
+                                    $hasPolicyAssignments = $PolicyAssign.ContainsKey('policyAssignments')
+                                }
+                                if (-not $hasPolicyAssignments) {
+                                    # Convert to hashtable with policyAssignments property
+                                    $PolicyAssign = @{ policyAssignments = @() }
+                                }
+                            } else {
+                                # Single value - wrap in hashtable
+                                $PolicyAssign = @{ policyAssignments = @($PolicyAssign) }
+                            }
+                        } else {
+                            $PolicyAssign = @{ policyAssignments = @() }
+                        }
+                        
                         # Get count for logging
                         $policyCount = 0
                         if ($null -ne $PolicyAssign) {
@@ -950,11 +975,12 @@ Function Invoke-CachedARI-Patched {
                                     }
                                 }
                             }
-                            # Convert ArrayList back to array for compatibility (handle empty arrays)
+                            # Convert ArrayList back to array, then wrap PolicyAssign in object with policyAssignments property
+                            # Start-ARIExtraJobs expects PolicyAssign to be an object with policyAssignments property
                             if ($allPolicyAssign.Count -gt 0) {
-                                $PolicyAssign = $allPolicyAssign.ToArray()
+                                $PolicyAssign = @{ policyAssignments = $allPolicyAssign.ToArray() }
                             } else {
-                                $PolicyAssign = @()
+                                $PolicyAssign = @{ policyAssignments = @() }
                             }
                             if ($allPolicyDef.Count -gt 0) {
                                 $PolicyDef = $allPolicyDef.ToArray()
