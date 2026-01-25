@@ -208,6 +208,66 @@ function Start-ARIExtraReports {
         if ($null -ne $Pol -and $Pol.Count -gt 0) {
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Generating Policy Sheet from processed cache data.')
             
+            # Filter out records without human-readable names (GUIDs only)
+            # Only include records where Policy has a displayName (not a GUID) and Initiative has a displayName (not "Policy Set: <guid>")
+            $filteredPol = @()
+            $excludedCount = 0
+            foreach ($record in $Pol) {
+                if ($null -eq $record) { continue }
+                
+                # Get Policy name and Initiative name
+                $policyName = $null
+                $initiativeName = $null
+                
+                if ($record -is [PSCustomObject]) {
+                    if ($record.PSObject.Properties.Name -contains 'Policy') {
+                        $policyName = $record.Policy
+                    }
+                    if ($record.PSObject.Properties.Name -contains 'Initiative') {
+                        $initiativeName = $record.Initiative
+                    }
+                } elseif ($record -is [System.Collections.Hashtable] -or $record -is [System.Collections.IDictionary]) {
+                    if ($record.ContainsKey('Policy')) {
+                        $policyName = $record['Policy']
+                    }
+                    if ($record.ContainsKey('Initiative')) {
+                        $initiativeName = $record['Initiative']
+                    }
+                }
+                
+                # Check if Policy name is a GUID (36-character GUID pattern)
+                $isPolicyGuid = $false
+                if ($null -ne $policyName -and $policyName -is [string]) {
+                    # Check if it's a GUID pattern (36 chars: 8-4-4-4-12)
+                    if ($policyName -match '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$') {
+                        $isPolicyGuid = $true
+                    }
+                }
+                
+                # Check if Initiative name indicates no displayName was found
+                $isInitiativeGuid = $false
+                if ($null -ne $initiativeName -and $initiativeName -is [string]) {
+                    # If Initiative starts with "Policy Set:", it means no displayName was found
+                    if ($initiativeName -match '^Policy Set:') {
+                        $isInitiativeGuid = $true
+                    }
+                }
+                
+                # Only include records with human-readable names
+                if (-not $isPolicyGuid -and -not $isInitiativeGuid) {
+                    $filteredPol += $record
+                } else {
+                    $excludedCount++
+                }
+            }
+            
+            # Replace Pol with filtered results
+            $Pol = $filteredPol
+            
+            if ($excludedCount -gt 0) {
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Filtered out ' + $excludedCount + ' Policy record(s) without human-readable names (GUIDs only)')
+            }
+            
             # Aggressive memory cleanup before Policy sheet generation
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Running aggressive memory cleanup before Policy sheet Excel generation.')
             try {
@@ -374,6 +434,66 @@ function Start-ARIExtraReports {
                     $Pol = @()
                 } elseif ($Pol -isnot [System.Array]) {
                     $Pol = @($Pol)
+                }
+                
+                # Filter out records without human-readable names (GUIDs only)
+                # Only include records where Policy has a displayName (not a GUID) and Initiative has a displayName (not "Policy Set: <guid>")
+                $filteredPol = @()
+                $excludedCount = 0
+                foreach ($record in $Pol) {
+                    if ($null -eq $record) { continue }
+                    
+                    # Get Policy name and Initiative name
+                    $policyName = $null
+                    $initiativeName = $null
+                    
+                    if ($record -is [PSCustomObject]) {
+                        if ($record.PSObject.Properties.Name -contains 'Policy') {
+                            $policyName = $record.Policy
+                        }
+                        if ($record.PSObject.Properties.Name -contains 'Initiative') {
+                            $initiativeName = $record.Initiative
+                        }
+                    } elseif ($record -is [System.Collections.Hashtable] -or $record -is [System.Collections.IDictionary]) {
+                        if ($record.ContainsKey('Policy')) {
+                            $policyName = $record['Policy']
+                        }
+                        if ($record.ContainsKey('Initiative')) {
+                            $initiativeName = $record['Initiative']
+                        }
+                    }
+                    
+                    # Check if Policy name is a GUID (36-character GUID pattern)
+                    $isPolicyGuid = $false
+                    if ($null -ne $policyName -and $policyName -is [string]) {
+                        # Check if it's a GUID pattern (36 chars: 8-4-4-4-12)
+                        if ($policyName -match '^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$') {
+                            $isPolicyGuid = $true
+                        }
+                    }
+                    
+                    # Check if Initiative name indicates no displayName was found
+                    $isInitiativeGuid = $false
+                    if ($null -ne $initiativeName -and $initiativeName -is [string]) {
+                        # If Initiative starts with "Policy Set:", it means no displayName was found
+                        if ($initiativeName -match '^Policy Set:') {
+                            $isInitiativeGuid = $true
+                        }
+                    }
+                    
+                    # Only include records with human-readable names
+                    if (-not $isPolicyGuid -and -not $isInitiativeGuid) {
+                        $filteredPol += $record
+                    } else {
+                        $excludedCount++
+                    }
+                }
+                
+                # Replace Pol with filtered results
+                $Pol = $filteredPol
+                
+                if ($excludedCount -gt 0) {
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Filtered out ' + $excludedCount + ' Policy record(s) without human-readable names (GUIDs only)')
                 }
                 
                 Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Policy data ready for sheet generation: Count=' + $Pol.Count)

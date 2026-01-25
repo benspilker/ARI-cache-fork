@@ -1276,6 +1276,55 @@ Function Invoke-CachedARI-Patched {
 
         Remove-Variable -Name ExtractionData -ErrorAction SilentlyContinue
 
+        # Save Policy data to cache (same as other cache files) when NOT using existing cache
+        # Policy follows the same pattern as other cache files:
+        #   - When UseExistingCache=false: Collect Policy data and save to Policy.json
+        #   - When UseExistingCache=true: Load Policy.json from cache
+        # During batch processing, Policy.json gets renamed to PolicyBatch.json for merge
+        $skipPolicyCheck = if ($SkipPolicy -is [switch]) { $SkipPolicy.IsPresent } else { $SkipPolicy -eq $true }
+        if (-not $skipPolicyCheck -and ($null -ne $PolicyAssign -or ($null -ne $PolicyDef -and $PolicyDef.Count -gt 0) -or ($null -ne $PolicySetDef -and $PolicySetDef.Count -gt 0))) {
+            try {
+                # Ensure PolicyAssign has correct structure
+                $normalizedPolicyAssign = $PolicyAssign
+                if ($null -eq $normalizedPolicyAssign) {
+                    $normalizedPolicyAssign = @{ policyAssignments = @() }
+                } elseif ($normalizedPolicyAssign -is [System.Array]) {
+                    $normalizedPolicyAssign = @{ policyAssignments = $normalizedPolicyAssign }
+                } elseif (-not ($normalizedPolicyAssign -is [PSCustomObject] -or $normalizedPolicyAssign -is [System.Collections.Hashtable])) {
+                    $normalizedPolicyAssign = @{ policyAssignments = @($normalizedPolicyAssign) }
+                } elseif ($normalizedPolicyAssign -is [PSCustomObject]) {
+                    if (-not ($normalizedPolicyAssign.PSObject.Properties.Name -contains 'policyAssignments')) {
+                        $normalizedPolicyAssign = @{ policyAssignments = @() }
+                    }
+                } elseif ($normalizedPolicyAssign -is [System.Collections.Hashtable]) {
+                    if (-not $normalizedPolicyAssign.ContainsKey('policyAssignments')) {
+                        $normalizedPolicyAssign = @{ policyAssignments = @() }
+                    }
+                }
+                
+                # Ensure arrays
+                $normalizedPolicyDef = if ($null -ne $PolicyDef) { if ($PolicyDef -is [System.Array]) { $PolicyDef } else { @($PolicyDef) } } else { @() }
+                $normalizedPolicySetDef = if ($null -ne $PolicySetDef) { if ($PolicySetDef -is [System.Array]) { $PolicySetDef } else { @($PolicySetDef) } } else { @() }
+                
+                $policyJsonPath = Join-Path $ReportCache 'Policy.json'
+                $policyJsonData = @{
+                    PolicyAssign = $normalizedPolicyAssign
+                    PolicyDef = $normalizedPolicyDef
+                    PolicySetDef = $normalizedPolicySetDef
+                }
+                $policyJsonContent = $policyJsonData | ConvertTo-Json -Depth 100 -Compress:$true
+                $policyJsonContent | Out-File -FilePath $policyJsonPath -Encoding UTF8 -Force -ErrorAction Stop
+                
+                    $assignCount = if ($normalizedPolicyAssign.policyAssignments -is [System.Array]) { $normalizedPolicyAssign.policyAssignments.Count } else { 0 }
+                    Write-Host "Saved Policy data to cache: Policy.json ($assignCount assignment(s), $($normalizedPolicyDef.Count) definition(s), $($normalizedPolicySetDef.Count) set definition(s))" -ForegroundColor Green
+                
+                # Clear from memory
+                Remove-Variable -Name policyJsonContent, policyJsonData -ErrorAction SilentlyContinue
+            } catch {
+                Write-Host "Warning: Failed to save Policy data to cache: $_" -ForegroundColor Yellow
+            }
+        }
+
         $ExtractionTotalTime = $ExtractionRuntime.Elapsed.ToString("dd\:hh\:mm\:ss\:fff")
 
         if ($Automation.IsPresent)
@@ -1408,15 +1457,11 @@ Function Invoke-CachedARI-Patched {
         Write-Host "[SkipExcel] Skipping Excel generation - only creating cache files" -ForegroundColor Green
         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[SkipExcel] Skipped Excel report generation')
         
-        # Note: Policy and Advisory data are NOT cached - they will be collected via API call during Excel generation
-        # This avoids merge issues with PolicyRaw.json and AdvisoryRaw.json files that have inconsistent structures
-        # Handle both switch parameters and boolean values
-        $skipPolicyCheck = if ($SkipPolicy -is [switch]) { $SkipPolicy.IsPresent } else { $SkipPolicy -eq $true }
-        if (-not $skipPolicyCheck) {
-            # Policy data will be collected via API call during Excel generation
-            # No need to cache it during batch collection
-            Write-Host "[SkipExcel] Policy data will be collected via API call during Excel generation (not caching)" -ForegroundColor Gray
-        }
+        # Note: Policy data is now saved after extraction (same as other cache files)
+        # When UseExistingCache=false: Policy data is collected and saved to Policy.json
+        # When UseExistingCache=true: Policy.json is loaded from cache
+        # During batch processing, Policy.json gets renamed to PolicyBatch.json for merge
+        # Policy data follows the same pattern as other cache files - no special handling needed here
         
         $skipAdvisoryCheck = if ($SkipAdvisory -is [switch]) { $SkipAdvisory.IsPresent } else { $SkipAdvisory -eq $true }
         if (-not $skipAdvisoryCheck) {
