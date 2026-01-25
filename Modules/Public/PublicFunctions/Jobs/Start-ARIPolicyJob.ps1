@@ -88,6 +88,14 @@ function Start-ARIPolicyJob {
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Created poltmp with ' + $poltmp.Count + ' unique PolicyDef entries (processed ' + $poltmpCount + ' items)')
     
     # Debug: Show sample of PolicyDef IDs to help diagnose matching issues
+    # Check for management group vs subscription level PolicyDefs
+    $mgPolicyDefs = $poltmp | Where-Object { $_.id -match 'managementgroups' }
+    $subPolicyDefs = $poltmp | Where-Object { $_.id -notmatch 'managementgroups' }
+    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: PolicyDef breakdown - MG level: ' + $mgPolicyDefs.Count + ', Subscription level: ' + $subPolicyDefs.Count)
+    if ($mgPolicyDefs.Count -gt 0) {
+        $sampleMgIds = $mgPolicyDefs | Select-Object -First 3 | ForEach-Object { $_.id }
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Sample MG PolicyDef IDs: ' + ($sampleMgIds -join ' | '))
+    }
     if ($poltmp.Count -gt 0) {
         $sampleIds = $poltmp | Select-Object -First 5 | ForEach-Object { $_.id }
         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Sample PolicyDef IDs (first 5): ' + ($sampleIds -join ' | '))

@@ -474,6 +474,40 @@ Function Invoke-CachedARI-Patched {
                         }
                         
                         Write-Host "[UseExistingCache] Loaded Policy data from cache ($policyCount assignment(s), $($PolicyDef.Count) definition(s), $($PolicySetDef.Count) set definition(s))" -ForegroundColor Green
+                        
+                        # Debug: Check for management group vs subscription level PolicyDefs
+                        $mgPolicyDefs = $PolicyDef | Where-Object { 
+                            $polDefId = $null
+                            if ($_ -is [PSCustomObject] -and $_.PSObject.Properties['id']) {
+                                $polDefId = $_.id
+                            } elseif (($_ -is [System.Collections.Hashtable] -or $_ -is [System.Collections.IDictionary]) -and $_.ContainsKey('id')) {
+                                $polDefId = $_.id
+                            }
+                            $null -ne $polDefId -and $polDefId -match 'managementgroups'
+                        }
+                        $subPolicyDefs = $PolicyDef | Where-Object { 
+                            $polDefId = $null
+                            if ($_ -is [PSCustomObject] -and $_.PSObject.Properties['id']) {
+                                $polDefId = $_.id
+                            } elseif (($_ -is [System.Collections.Hashtable] -or $_ -is [System.Collections.IDictionary]) -and $_.ContainsKey('id')) {
+                                $polDefId = $_.id
+                            }
+                            $null -ne $polDefId -and $polDefId -notmatch 'managementgroups'
+                        }
+                        Write-Host "[UseExistingCache] PolicyDef breakdown - MG level: $($mgPolicyDefs.Count), Subscription level: $($subPolicyDefs.Count)" -ForegroundColor Gray
+                        if ($mgPolicyDefs.Count -gt 0) {
+                            $sampleMgIds = $mgPolicyDefs | Select-Object -First 3 | ForEach-Object {
+                                $polDefId = $null
+                                if ($_ -is [PSCustomObject] -and $_.PSObject.Properties['id']) {
+                                    $polDefId = $_.id
+                                } elseif (($_ -is [System.Collections.Hashtable] -or $_ -is [System.Collections.IDictionary]) -and $_.ContainsKey('id')) {
+                                    $polDefId = $_.id
+                                }
+                                $polDefId
+                            }
+                            Write-Host "[UseExistingCache] Sample MG PolicyDef IDs: $($sampleMgIds -join ' | ')" -ForegroundColor Gray
+                        }
+                        
                         $hasPolicyData = $true
                     } else {
                         # Processed Policy results (array) - this format is not usable for Policy job
