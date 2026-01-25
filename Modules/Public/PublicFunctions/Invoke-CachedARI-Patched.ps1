@@ -528,7 +528,7 @@ Function Invoke-CachedARI-Patched {
                     }
                     
                     # Try cgroup v1 (memory.usage_in_bytes and memory.limit_in_bytes)
-                    if ($null -eq $workerUsedMB -and Test-Path "/sys/fs/cgroup/memory/memory.usage_in_bytes") {
+                    if ($null -eq $workerUsedMB -and (Test-Path "/sys/fs/cgroup/memory/memory.usage_in_bytes")) {
                         try {
                             $usageStr = Get-Content "/sys/fs/cgroup/memory/memory.usage_in_bytes" -Raw -ErrorAction Stop
                             $usageBytes = [int64]$usageStr.Trim()
@@ -812,7 +812,7 @@ Function Invoke-CachedARI-Patched {
                 Write-Host "[UseExistingCache] Collecting Advisor data via API (cache file not found)..." -ForegroundColor Cyan
                 
                 # Aggressive memory cleanup BEFORE Advisor API call
-                Write-Host "[UseExistingCache] Running extreme memory cleanup before Advisor API call..." -ForegroundColor Gray
+                Write-Host "[UseExistingCache] Running aggressive memory cleanup before Advisor API call..." -ForegroundColor Gray
                 [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $false)
                 [System.GC]::WaitForPendingFinalizers()
                 [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
@@ -931,8 +931,8 @@ Function Invoke-CachedARI-Patched {
                 } else {
                     Write-Host "[UseExistingCache] Collecting Policy data via API (cache file not found)..." -ForegroundColor Cyan
                     
-                    # EXTREME memory cleanup BEFORE Policy API call (multiple iterations)
-                    Write-Host "[UseExistingCache] Running EXTREME memory cleanup before Policy API call..." -ForegroundColor Gray
+                    # Aggressive memory cleanup BEFORE Policy API call (multiple iterations)
+                    Write-Host "[UseExistingCache] Running aggressive memory cleanup before Policy API call..." -ForegroundColor Gray
                     try {
                         Get-Job | Remove-Job -Force -ErrorAction SilentlyContinue
                         for ($i = 1; $i -le 10; $i++) {
