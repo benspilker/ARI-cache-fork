@@ -289,20 +289,21 @@ function Start-ARIPolicyJob {
                     # Match policyDefinitionId (which may be full path or GUID) against PolicyDef id (which may also be full path or GUID)
                     $Pol = $null
                     if ($null -ne $policyDefId) {
-                        # Extract GUID from policyDefinitionId if it's a full path
-                        # Format: /providers/microsoft.authorization/policydefinitions/{guid}
+                        # Extract GUID from policyDefinitionId if it's a full path (case-insensitive)
+                        # Format: /providers/microsoft.authorization/policydefinitions/{guid} or /providers/Microsoft.Authorization/policyDefinitions/{guid}
                         # or: /providers/microsoft.management/managementgroups/{mg}/providers/microsoft.authorization/policydefinitions/{guid}
                         $policyDefGuid = $null
-                        if ($policyDefId -match 'policydefinitions/([a-f0-9\-]{36})$') {
-                            $policyDefGuid = $Matches[1]
-                        } elseif ($policyDefId -match '^[a-f0-9\-]{36}$') {
-                            # Already a GUID
-                            $policyDefGuid = $policyDefId
+                        # Case-insensitive regex match for GUID extraction
+                        if ($policyDefId -match 'policydefinitions/([a-fA-F0-9\-]{36})$') {
+                            $policyDefGuid = $Matches[1].ToLower()  # Normalize to lowercase for comparison
+                        } elseif ($policyDefId -match '^[a-fA-F0-9\-]{36}$') {
+                            # Already a GUID - normalize to lowercase
+                            $policyDefGuid = $policyDefId.ToLower()
                         }
                         
                         # Try to find matching PolicyDef by:
-                        # 1. Exact match (full path to full path, or GUID to GUID)
-                        # 2. GUID match (extract GUID from PolicyDef id and compare)
+                        # 1. Case-insensitive exact match (full path to full path)
+                        # 2. Case-insensitive GUID match (extract GUID from PolicyDef id and compare)
                         $matchingPolDef = $null
                         foreach ($polDefItem in $poltmp) {
                             $polDefId = $null
@@ -313,21 +314,23 @@ function Start-ARIPolicyJob {
                             }
                             
                             if ($null -ne $polDefId) {
-                                # Try exact match first
-                                if ($polDefId -eq $policyDefId) {
+                                # Try case-insensitive exact match first
+                                if ($polDefId -eq $policyDefId -or $polDefId.ToLower() -eq $policyDefId.ToLower()) {
                                     $matchingPolDef = $polDefItem
                                     break
                                 }
                                 
-                                # Try GUID match if we extracted a GUID
+                                # Try GUID match if we extracted a GUID (case-insensitive)
                                 if ($null -ne $policyDefGuid) {
                                     $polDefGuid = $null
-                                    if ($polDefId -match 'policydefinitions/([a-f0-9\-]{36})$') {
-                                        $polDefGuid = $Matches[1]
-                                    } elseif ($polDefId -match '^[a-f0-9\-]{36}$') {
-                                        $polDefGuid = $polDefId
+                                    # Case-insensitive regex match for GUID extraction
+                                    if ($polDefId -match 'policydefinitions/([a-fA-F0-9\-]{36})$') {
+                                        $polDefGuid = $Matches[1].ToLower()  # Normalize to lowercase
+                                    } elseif ($polDefId -match '^[a-fA-F0-9\-]{36}$') {
+                                        $polDefGuid = $polDefId.ToLower()  # Normalize to lowercase
                                     }
                                     
+                                    # Case-insensitive GUID comparison
                                     if ($null -ne $polDefGuid -and $polDefGuid -eq $policyDefGuid) {
                                         $matchingPolDef = $polDefItem
                                         break
@@ -352,10 +355,10 @@ function Start-ARIPolicyJob {
                             # More detailed debug: show what we tried to match against
                             $debugSampleIds = $poltmp | Select-Object -First 3 | ForEach-Object { $_.id }
                             $debugSampleGuids = $debugSampleIds | ForEach-Object {
-                                if ($_ -match 'policydefinitions/([a-f0-9\-]{36})$') {
-                                    $Matches[1]
-                                } elseif ($_ -match '^[a-f0-9\-]{36}$') {
-                                    $_
+                                if ($_ -match 'policydefinitions/([a-fA-F0-9\-]{36})$') {
+                                    $Matches[1].ToLower()
+                                } elseif ($_ -match '^[a-fA-F0-9\-]{36}$') {
+                                    $_.ToLower()
                                 } else {
                                     'NO_GUID'
                                 }
