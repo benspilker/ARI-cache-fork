@@ -502,29 +502,91 @@ Function Invoke-CachedARI-Patched {
                     Write-Host "[UseExistingCache] Warning: Failed to load Policy cache file: $_" -ForegroundColor Yellow
                 }
             } else {
-                # Policy.json not found - check if we should collect via API
-                # But first check memory - if memory is low, skip Policy collection to avoid OOM
+                # Policy.json not found - check worker memory (cgroup) before collecting via API
+                # CRITICAL: Check worker/container memory limit, not system memory
                 $skipPolicyDueToMemory = $false
                 try {
-                    if (Test-Path "/proc/meminfo") {
-                        $memInfo = Get-Content "/proc/meminfo" | Select-String -Pattern "MemAvailable|MemFree"
-                        if ($memInfo) {
-                            $memAvailableLine = $memInfo | Where-Object { $_ -match "MemAvailable" }
-                            if (-not $memAvailableLine) {
-                                $memAvailableLine = $memInfo | Where-Object { $_ -match "MemFree" }
+                    # Check cgroup memory usage (worker/container memory)
+                    $workerUsedMB = $null
+                    $workerLimitMB = $null
+                    
+                    # Try cgroup v2 first (memory.current and memory.max)
+                    if (Test-Path "/sys/fs/cgroup/memory.current") {
+                        try {
+                            $usageStr = Get-Content "/sys/fs/cgroup/memory.current" -Raw -ErrorAction Stop
+                            $usageBytes = [int64]$usageStr.Trim()
+                            $workerUsedMB = [math]::Round($usageBytes / 1MB, 2)
+                            
+                            if (Test-Path "/sys/fs/cgroup/memory.max") {
+                                $limitStr = Get-Content "/sys/fs/cgroup/memory.max" -Raw -ErrorAction Stop
+                                if ($limitStr.Trim() -ne "max") {
+                                    $limitBytes = [int64]$limitStr.Trim()
+                                    $workerLimitMB = [math]::Round($limitBytes / 1MB, 2)
+                                }
                             }
-                            if ($memAvailableLine -match "(\d+)") {
-                                $availableMB = [math]::Round([int]$matches[1] / 1024, 2)
-                                # Skip Policy collection if less than 500MB free (conservative threshold)
-                                if ($availableMB -lt 500) {
-                                    Write-Host "[UseExistingCache] WARNING: Policy cache file not found AND low memory ($availableMB MB free). Skipping Policy collection to prevent OOM." -ForegroundColor Yellow
-                                    Write-Host "[UseExistingCache] Policy data will not be included in this report." -ForegroundColor Yellow
-                                    $skipPolicyDueToMemory = $true
-                                    $hasPolicyData = $false
-                                    # Initialize empty Policy variables
-                                    $PolicyAssign = @{ policyAssignments = @() }
-                                    $PolicyDef = @()
-                                    $PolicySetDef = @()
+                        } catch { }
+                    }
+                    
+                    # Try cgroup v1 (memory.usage_in_bytes and memory.limit_in_bytes)
+                    if ($null -eq $workerUsedMB -and Test-Path "/sys/fs/cgroup/memory/memory.usage_in_bytes") {
+                        try {
+                            $usageStr = Get-Content "/sys/fs/cgroup/memory/memory.usage_in_bytes" -Raw -ErrorAction Stop
+                            $usageBytes = [int64]$usageStr.Trim()
+                            $workerUsedMB = [math]::Round($usageBytes / 1MB, 2)
+                            
+                            if (Test-Path "/sys/fs/cgroup/memory/memory.limit_in_bytes") {
+                                $limitStr = Get-Content "/sys/fs/cgroup/memory/memory.limit_in_bytes" -Raw -ErrorAction Stop
+                                $limitBytes = [int64]$limitStr.Trim()
+                                if ($limitBytes -lt 9223372036854775807) { # Not unlimited
+                                    $workerLimitMB = [math]::Round($limitBytes / 1MB, 2)
+                                }
+                            }
+                        } catch { }
+                    }
+                    
+                    # If we have worker memory info, use it for decision
+                    if ($null -ne $workerUsedMB -and $null -ne $workerLimitMB -and $workerLimitMB -gt 0) {
+                        $workerPercentUsed = ($workerUsedMB / $workerLimitMB) * 100
+                        $workerAvailableMB = $workerLimitMB - $workerUsedMB
+                        
+                        Write-Host "[UseExistingCache] Worker memory: Used: $workerUsedMB MB / $workerLimitMB MB ($([math]::Round($workerPercentUsed, 1))%), Available: $workerAvailableMB MB" -ForegroundColor Gray
+                        
+                        # Skip Policy collection if worker memory is >80% used OR <300MB available
+                        if ($workerPercentUsed -gt 80 -or $workerAvailableMB -lt 300) {
+                            Write-Host "[UseExistingCache] WARNING: Worker memory is critically high ($([math]::Round($workerPercentUsed, 1))% used, $workerAvailableMB MB free). Skipping Policy collection to prevent OOM." -ForegroundColor Yellow
+                            Write-Host "[UseExistingCache] Policy data will not be included in this report." -ForegroundColor Yellow
+                            $skipPolicyDueToMemory = $true
+                            $hasPolicyData = $false
+                            # Initialize empty Policy variables
+                            $PolicyAssign = @{ policyAssignments = @() }
+                            $PolicyDef = @()
+                            $PolicySetDef = @()
+                        } else {
+                            Write-Host "[UseExistingCache] Policy cache file not found - will collect via API call" -ForegroundColor Gray
+                        }
+                    } else {
+                        # Fallback: Use system memory check (less accurate but better than nothing)
+                        if (Test-Path "/proc/meminfo") {
+                            $memInfo = Get-Content "/proc/meminfo" | Select-String -Pattern "MemAvailable|MemFree"
+                            if ($memInfo) {
+                                $memAvailableLine = $memInfo | Where-Object { $_ -match "MemAvailable" }
+                                if (-not $memAvailableLine) {
+                                    $memAvailableLine = $memInfo | Where-Object { $_ -match "MemFree" }
+                                }
+                                if ($memAvailableLine -match "(\d+)") {
+                                    $availableMB = [math]::Round([int]$matches[1] / 1024, 2)
+                                    # More conservative threshold for system memory (since it's less accurate)
+                                    if ($availableMB -lt 1000) {
+                                        Write-Host "[UseExistingCache] WARNING: Low system memory ($availableMB MB free). Skipping Policy collection to prevent OOM." -ForegroundColor Yellow
+                                        Write-Host "[UseExistingCache] Policy data will not be included in this report." -ForegroundColor Yellow
+                                        $skipPolicyDueToMemory = $true
+                                        $hasPolicyData = $false
+                                        $PolicyAssign = @{ policyAssignments = @() }
+                                        $PolicyDef = @()
+                                        $PolicySetDef = @()
+                                    } else {
+                                        Write-Host "[UseExistingCache] Policy cache file not found - will collect via API call" -ForegroundColor Gray
+                                    }
                                 } else {
                                     Write-Host "[UseExistingCache] Policy cache file not found - will collect via API call" -ForegroundColor Gray
                                 }
@@ -534,11 +596,14 @@ Function Invoke-CachedARI-Patched {
                         } else {
                             Write-Host "[UseExistingCache] Policy cache file not found - will collect via API call" -ForegroundColor Gray
                         }
-                    } else {
-                        Write-Host "[UseExistingCache] Policy cache file not found - will collect via API call" -ForegroundColor Gray
                     }
                 } catch {
-                    Write-Host "[UseExistingCache] Policy cache file not found - will collect via API call" -ForegroundColor Gray
+                    Write-Host "[UseExistingCache] Warning: Could not check memory. Skipping Policy collection to be safe." -ForegroundColor Yellow
+                    $skipPolicyDueToMemory = $true
+                    $hasPolicyData = $false
+                    $PolicyAssign = @{ policyAssignments = @() }
+                    $PolicyDef = @()
+                    $PolicySetDef = @()
                 }
                 
                 # If memory check determined we should skip, set skipPolicyValue to true
