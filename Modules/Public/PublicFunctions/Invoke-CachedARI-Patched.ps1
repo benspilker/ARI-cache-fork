@@ -502,7 +502,49 @@ Function Invoke-CachedARI-Patched {
                     Write-Host "[UseExistingCache] Warning: Failed to load Policy cache file: $_" -ForegroundColor Yellow
                 }
             } else {
-                Write-Host "[UseExistingCache] Policy cache file not found - will collect via API call" -ForegroundColor Gray
+                # Policy.json not found - check if we should collect via API
+                # But first check memory - if memory is low, skip Policy collection to avoid OOM
+                $skipPolicyDueToMemory = $false
+                try {
+                    if (Test-Path "/proc/meminfo") {
+                        $memInfo = Get-Content "/proc/meminfo" | Select-String -Pattern "MemAvailable|MemFree"
+                        if ($memInfo) {
+                            $memAvailableLine = $memInfo | Where-Object { $_ -match "MemAvailable" }
+                            if (-not $memAvailableLine) {
+                                $memAvailableLine = $memInfo | Where-Object { $_ -match "MemFree" }
+                            }
+                            if ($memAvailableLine -match "(\d+)") {
+                                $availableMB = [math]::Round([int]$matches[1] / 1024, 2)
+                                # Skip Policy collection if less than 500MB free (conservative threshold)
+                                if ($availableMB -lt 500) {
+                                    Write-Host "[UseExistingCache] WARNING: Policy cache file not found AND low memory ($availableMB MB free). Skipping Policy collection to prevent OOM." -ForegroundColor Yellow
+                                    Write-Host "[UseExistingCache] Policy data will not be included in this report." -ForegroundColor Yellow
+                                    $skipPolicyDueToMemory = $true
+                                    $hasPolicyData = $false
+                                    # Initialize empty Policy variables
+                                    $PolicyAssign = @{ policyAssignments = @() }
+                                    $PolicyDef = @()
+                                    $PolicySetDef = @()
+                                } else {
+                                    Write-Host "[UseExistingCache] Policy cache file not found - will collect via API call" -ForegroundColor Gray
+                                }
+                            } else {
+                                Write-Host "[UseExistingCache] Policy cache file not found - will collect via API call" -ForegroundColor Gray
+                            }
+                        } else {
+                            Write-Host "[UseExistingCache] Policy cache file not found - will collect via API call" -ForegroundColor Gray
+                        }
+                    } else {
+                        Write-Host "[UseExistingCache] Policy cache file not found - will collect via API call" -ForegroundColor Gray
+                    }
+                } catch {
+                    Write-Host "[UseExistingCache] Policy cache file not found - will collect via API call" -ForegroundColor Gray
+                }
+                
+                # If memory check determined we should skip, set skipPolicyValue to true
+                if ($skipPolicyDueToMemory) {
+                    $skipPolicyValue = $true
+                }
             }
             
             # PolicyRaw.json loading removed - Policy data collected via API call instead
