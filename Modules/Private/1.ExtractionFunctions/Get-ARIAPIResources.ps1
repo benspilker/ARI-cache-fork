@@ -137,19 +137,67 @@ function Get-ARIAPIResources {
                     #Policies
                     try {
                         $url = ('https://'+ $AzURL +'/subscriptions/'+$sub+'/providers/Microsoft.PolicyInsights/policyStates/latest/summarize?api-version=2019-10-01')
-                        $PolicyAssign = (Invoke-RestMethod -Uri $url -Headers $header -Method POST).value
-                        # Safely check if policyAssignments property exists before accessing
-                        $hasPolicyAssignments = $false
+                        $policySummarizeResponse = Invoke-RestMethod -Uri $url -Headers $header -Method POST
+                        $PolicyAssign = $policySummarizeResponse.value
+                        
+                        # The summarize API returns an array in .value, where each element may have policyAssignments
+                        # We need to extract all policyAssignments from all elements
+                        $PolicyAssignCount = 0
+                        $allPolicyAssignments = @()
+                        
                         if ($null -ne $PolicyAssign) {
-                            if ($PolicyAssign -is [PSCustomObject]) {
-                                $hasPolicyAssignments = $PolicyAssign.PSObject.Properties.Name -contains 'policyAssignments'
-                            } elseif ($PolicyAssign -is [System.Collections.Hashtable]) {
-                                $hasPolicyAssignments = $PolicyAssign.ContainsKey('policyAssignments')
+                            if ($PolicyAssign -is [System.Array]) {
+                                # Iterate through array and collect all policyAssignments
+                                foreach ($summaryItem in $PolicyAssign) {
+                                    if ($null -ne $summaryItem) {
+                                        $hasPolicyAssignments = $false
+                                        if ($summaryItem -is [PSCustomObject]) {
+                                            $hasPolicyAssignments = $summaryItem.PSObject.Properties.Name -contains 'policyAssignments'
+                                        } elseif ($summaryItem -is [System.Collections.Hashtable]) {
+                                            $hasPolicyAssignments = $summaryItem.ContainsKey('policyAssignments')
+                                        }
+                                        
+                                        if ($hasPolicyAssignments -and $null -ne $summaryItem.policyAssignments) {
+                                            if ($summaryItem.policyAssignments -is [System.Array]) {
+                                                $allPolicyAssignments += $summaryItem.policyAssignments
+                                            } elseif ($null -ne $summaryItem.policyAssignments) {
+                                                $allPolicyAssignments += @($summaryItem.policyAssignments)
+                                            }
+                                        }
+                                    }
+                                }
+                                $PolicyAssignCount = $allPolicyAssignments.Count
+                                # Store the flattened array for later use
+                                $PolicyAssign = if ($PolicyAssignCount -gt 0) { $allPolicyAssignments } else { @() }
+                            } elseif ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
+                                # Single object - check for policyAssignments property
+                                $hasPolicyAssignments = $false
+                                if ($PolicyAssign -is [PSCustomObject]) {
+                                    $hasPolicyAssignments = $PolicyAssign.PSObject.Properties.Name -contains 'policyAssignments'
+                                } elseif ($PolicyAssign -is [System.Collections.Hashtable]) {
+                                    $hasPolicyAssignments = $PolicyAssign.ContainsKey('policyAssignments')
+                                }
+                                
+                                if ($hasPolicyAssignments -and $null -ne $PolicyAssign.policyAssignments) {
+                                    if ($PolicyAssign.policyAssignments -is [System.Array]) {
+                                        $PolicyAssignCount = $PolicyAssign.policyAssignments.Count
+                                        $PolicyAssign = $PolicyAssign.policyAssignments
+                                    } else {
+                                        $PolicyAssignCount = 1
+                                        $PolicyAssign = @($PolicyAssign.policyAssignments)
+                                    }
+                                } else {
+                                    $PolicyAssignCount = 0
+                                    $PolicyAssign = @()
+                                }
+                            } else {
+                                $PolicyAssignCount = 0
+                                $PolicyAssign = @()
                             }
+                        } else {
+                            $PolicyAssign = @()
                         }
-                        $PolicyAssignCount = if ($hasPolicyAssignments -and $null -ne $PolicyAssign.policyAssignments) { 
-                            if ($PolicyAssign.policyAssignments -is [System.Array]) { $PolicyAssign.policyAssignments.Count } else { 1 }
-                        } else { 0 }
+                        
                         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Collected ' + $PolicyAssignCount + ' policy assignment(s) for subscription ' + $sub)
                         Start-Sleep -Milliseconds 200
                         $url = ('https://'+ $AzURL +'/subscriptions/'+$sub+'/providers/Microsoft.Authorization/policySetDefinitions?api-version=2023-04-01')
