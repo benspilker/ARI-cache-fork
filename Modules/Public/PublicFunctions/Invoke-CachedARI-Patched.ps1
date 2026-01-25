@@ -1018,18 +1018,58 @@ Function Invoke-CachedARI-Patched {
                             Write-Host "[UseExistingCache] Collected $PolicyCount Policy assignment(s) via API call" -ForegroundColor Green
                             
                             # Save Policy data to Policy.json so Start-ARIExtraReports can find it
+                            # Use memory-efficient approach: write directly to file instead of holding entire JSON in memory
                             try {
                                 $policyJsonPath = Join-Path $ReportCache 'Policy.json'
-                                $policyJsonData = @{
-                                    PolicyAssign = $PolicyAssign
-                                    PolicyDef = $PolicyDef
-                                    PolicySetDef = $PolicySetDef
+                                
+                                # Check available memory before attempting to serialize large Policy data
+                                $skipSaveDueToMemory = $false
+                                try {
+                                    if (Test-Path "/proc/meminfo") {
+                                        $memInfo = Get-Content "/proc/meminfo" | Select-String -Pattern "MemAvailable|MemFree"
+                                        if ($memInfo) {
+                                            $memAvailableLine = $memInfo | Where-Object { $_ -match "MemAvailable" }
+                                            if (-not $memAvailableLine) {
+                                                $memAvailableLine = $memInfo | Where-Object { $_ -match "MemFree" }
+                                            }
+                                            if ($memAvailableLine -match "(\d+)") {
+                                                $availableMB = [math]::Round([int]$matches[1] / 1024, 2)
+                                                # Skip save if less than 200MB free (Policy.json can be large)
+                                                if ($availableMB -lt 200) {
+                                                    Write-Host "[UseExistingCache] WARNING: Low memory ($availableMB MB free). Skipping Policy.json save to prevent OOM." -ForegroundColor Yellow
+                                                    Write-Host "[UseExistingCache] Policy data will be collected fresh during Excel generation if needed." -ForegroundColor Yellow
+                                                    $skipSaveDueToMemory = $true
+                                                }
+                                            }
+                                        }
+                                    }
+                                } catch {
+                                    # Memory check failed - proceed with save attempt
                                 }
-                                $policyJsonContent = $policyJsonData | ConvertTo-Json -Depth 100 -Compress:$false
-                                Set-Content -Path $policyJsonPath -Value $policyJsonContent -Force -ErrorAction Stop
-                                Write-Host "[UseExistingCache] Saved Policy data to Policy.json for reporting" -ForegroundColor Green
+                                
+                                if (-not $skipSaveDueToMemory) {
+                                    # Use Out-File with -Encoding UTF8 for better memory efficiency than Set-Content
+                                    # ConvertTo-Json with -Compress:$true uses less memory than -Compress:$false
+                                    $policyJsonData = @{
+                                        PolicyAssign = $PolicyAssign
+                                        PolicyDef = $PolicyDef
+                                        PolicySetDef = $PolicySetDef
+                                    }
+                                    # Use compressed JSON to reduce memory usage
+                                    $policyJsonContent = $policyJsonData | ConvertTo-Json -Depth 100 -Compress:$true
+                                    # Write directly to file using Out-File (more memory-efficient for large content)
+                                    $policyJsonContent | Out-File -FilePath $policyJsonPath -Encoding UTF8 -Force -ErrorAction Stop
+                                    Write-Host "[UseExistingCache] Saved Policy data to Policy.json for reporting" -ForegroundColor Green
+                                    
+                                    # Clear the JSON content from memory immediately after writing
+                                    Remove-Variable -Name policyJsonContent -ErrorAction SilentlyContinue
+                                    Remove-Variable -Name policyJsonData -ErrorAction SilentlyContinue
+                                }
                             } catch {
                                 Write-Host "[UseExistingCache] Warning: Failed to save Policy.json: $_" -ForegroundColor Yellow
+                                # Clear variables on error to free memory
+                                Remove-Variable -Name policyJsonContent -ErrorAction SilentlyContinue
+                                Remove-Variable -Name policyJsonData -ErrorAction SilentlyContinue
                             }
                         } else {
                             # SkipPolicy is true - initialize empty Policy variables

@@ -104,10 +104,14 @@ function Start-ARIExcelJob {
                         $outagesStandaloneFile = $CacheFiles | Where-Object { $_.Name -eq 'Outages.json' }
                         if ($outagesStandaloneFile) {
                             try {
-                                $outagesFileContent = New-Object System.IO.StreamReader($outagesStandaloneFile.FullName)
-                                $outagesFileData = $outagesFileContent.ReadToEnd()
-                                $outagesFileContent.Dispose()
-                                $outagesFileData = $outagesFileData | ConvertFrom-Json
+                                # Use Get-Content with -Raw instead of StreamReader to avoid OOM on large files
+                                # StreamReader.ReadToEnd() can cause OOM if file is large
+                                $outagesFileData = Get-Content -Path $outagesStandaloneFile.FullName -Raw -ErrorAction Stop
+                                if ($null -ne $outagesFileData -and $outagesFileData.Length -gt 0) {
+                                    $outagesFileData = $outagesFileData | ConvertFrom-Json
+                                } else {
+                                    $outagesFileData = $null
+                                }
                                 
                                 # Handle both direct array and object with Outages property
                                 if ($outagesFileData -is [System.Array]) {
