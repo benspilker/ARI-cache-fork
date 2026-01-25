@@ -169,9 +169,44 @@ function Start-ARIPolicyJob {
             
             if(![string]::IsNullOrEmpty($policySetDefId))
                 {
+                    # Extract GUID from policySetDefinitionId for fallback matching
+                    $policySetDefGuid = $null
+                    if ($policySetDefId -match 'policysetdefinitions/([a-fA-F0-9\-]{36})$') {
+                        $policySetDefGuid = $Matches[1].ToLower()
+                    } elseif ($policySetDefId -match '^[a-fA-F0-9\-]{36}$') {
+                        $policySetDefGuid = $policySetDefId.ToLower()
+                    }
+                    
                     $TempPolDef = foreach ($PolDe in $PolicySetDef)
                         {
-                            if ($PolDe.id -eq $policySetDefId)
+                            $polSetDefId = $null
+                            if ($PolDe -is [PSCustomObject] -and $PolDe.PSObject.Properties['id']) {
+                                $polSetDefId = $PolDe.id
+                            } elseif (($PolDe -is [System.Collections.Hashtable] -or $PolDe -is [System.Collections.IDictionary]) -and $PolDe.ContainsKey('id')) {
+                                $polSetDefId = $PolDe['id']
+                            }
+                            
+                            $isMatch = $false
+                            if ($null -ne $polSetDefId) {
+                                # Try case-insensitive exact match first
+                                if ($polSetDefId -eq $policySetDefId -or $polSetDefId.ToLower() -eq $policySetDefId.ToLower()) {
+                                    $isMatch = $true
+                                }
+                                # Try GUID match if exact match failed
+                                elseif ($null -ne $policySetDefGuid) {
+                                    $polSetDefGuid = $null
+                                    if ($polSetDefId -match 'policysetdefinitions/([a-fA-F0-9\-]{36})$') {
+                                        $polSetDefGuid = $Matches[1].ToLower()
+                                    } elseif ($polSetDefId -match '^[a-fA-F0-9\-]{36}$') {
+                                        $polSetDefGuid = $polSetDefId.ToLower()
+                                    }
+                                    if ($null -ne $polSetDefGuid -and $polSetDefGuid -eq $policySetDefGuid) {
+                                        $isMatch = $true
+                                    }
+                                }
+                            }
+                            
+                            if ($isMatch)
                                 {
                                     # Safely access properties.displayName - handle cases where properties might not exist
                                     $displayName = $null
@@ -360,34 +395,78 @@ function Start-ARIPolicyJob {
                                 $Pol = $null
                             }
                         } else {
-                            # More detailed debug: show what we tried to match against
-                            $debugSampleIds = $poltmp | Select-Object -First 3 | ForEach-Object { $_.id }
-                            $debugSampleGuids = $debugSampleIds | ForEach-Object {
-                                if ($_ -match 'policydefinitions/([a-fA-F0-9\-]{36})$') {
-                                    $Matches[1].ToLower()
-                                } elseif ($_ -match '^[a-fA-F0-9\-]{36}$') {
-                                    $_.ToLower()
-                                } else {
-                                    'NO_GUID'
+                            # Try one more time: Look for PolicyDef with same name/GUID but different path
+                            # This handles cases where assignment references MG-scoped PolicyDef but we have tenant-level one
+                            $fallbackPolDef = $null
+                            if ($null -ne $policyDefGuid) {
+                                # Try to find any PolicyDef with the same GUID, regardless of path
+                                foreach ($polDefItem in $poltmp) {
+                                    $polDefId = $null
+                                    if ($polDefItem -is [PSCustomObject] -and $polDefItem.PSObject.Properties['id']) {
+                                        $polDefId = $polDefItem.id
+                                    } elseif (($polDefItem -is [System.Collections.Hashtable] -or $polDefItem -is [System.Collections.IDictionary]) -and $polDefItem.ContainsKey('id')) {
+                                        $polDefId = $polDefItem['id']
+                                    }
+                                    
+                                    if ($null -ne $polDefId) {
+                                        $polDefGuidCheck = $null
+                                        if ($polDefId -match 'policydefinitions/([a-fA-F0-9\-]{36})$') {
+                                            $polDefGuidCheck = $Matches[1].ToLower()
+                                        } elseif ($polDefId -match '^[a-fA-F0-9\-]{36}$') {
+                                            $polDefGuidCheck = $polDefId.ToLower()
+                                        }
+                                        
+                                        if ($null -ne $polDefGuidCheck -and $polDefGuidCheck -eq $policyDefGuid) {
+                                            $fallbackPolDef = $polDefItem
+                                            break
+                                        }
+                                    }
                                 }
                             }
-                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: No matching PolicyDef found for policyDefinitionId: ' + $policyDefId + ' (extracted GUID: ' + $(if ($policyDefGuid) { $policyDefGuid } else { 'none' }) + ')')
-                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Searched in ' + $poltmp.Count + ' PolicyDef(s). Sample IDs: ' + ($debugSampleIds -join ' | ') + ' | Sample GUIDs: ' + ($debugSampleGuids -join ' | '))
                             
-                            # Workaround: Create a minimal PolicyDef object from the policyDefinitionId
-                            # This allows Policy records to be created even when PolicyDef isn't found
-                            # (e.g., when PolicyDef is at management group level but only subscription-level PolicyDefs were collected)
-                            $Pol = [PSCustomObject]@{
-                                displayName = if ($policyDefId -match '/([^/]+)$') { $Matches[1] } else { 'Unknown Policy' }
-                                policyType = if ($policyDefId -match '/managementgroups/') { 'Custom' } else { 'BuiltIn' }
-                                mode = 'All'
-                                version = ''
-                                metadata = @{
-                                    deprecated = ''
-                                    category = ''
+                            if ($null -ne $fallbackPolDef) {
+                                # Found a PolicyDef with matching GUID but different path - use it
+                                try {
+                                    if ($fallbackPolDef -is [PSCustomObject] -and $fallbackPolDef.PSObject.Properties['properties'] -and $null -ne $fallbackPolDef.properties) {
+                                        $Pol = $fallbackPolDef.properties
+                                    } elseif (($fallbackPolDef -is [System.Collections.Hashtable] -or $fallbackPolDef -is [System.Collections.IDictionary]) -and $fallbackPolDef.ContainsKey('properties') -and $null -ne $fallbackPolDef['properties']) {
+                                        $Pol = $fallbackPolDef['properties']
+                                    }
+                                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Found PolicyDef by GUID fallback (different path): ' + $policyDefId)
+                                } catch {
+                                    $Pol = $null
                                 }
                             }
-                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Created minimal PolicyDef object for missing PolicyDef: ' + $policyDefId)
+                            
+                            if ($null -eq $Pol) {
+                                # More detailed debug: show what we tried to match against
+                                $debugSampleIds = $poltmp | Select-Object -First 3 | ForEach-Object { $_.id }
+                                $debugSampleGuids = $debugSampleIds | ForEach-Object {
+                                    if ($_ -match 'policydefinitions/([a-fA-F0-9\-]{36})$') {
+                                        $Matches[1].ToLower()
+                                    } elseif ($_ -match '^[a-fA-F0-9\-]{36}$') {
+                                        $_.ToLower()
+                                    } else {
+                                        'NO_GUID'
+                                    }
+                                }
+                                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: No matching PolicyDef found for policyDefinitionId: ' + $policyDefId + ' (extracted GUID: ' + $(if ($policyDefGuid) { $policyDefGuid } else { 'none' }) + ')')
+                                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Searched in ' + $poltmp.Count + ' PolicyDef(s). Sample IDs: ' + ($debugSampleIds -join ' | ') + ' | Sample GUIDs: ' + ($debugSampleGuids -join ' | '))
+                                
+                                # Last resort: Create a minimal PolicyDef object from the policyDefinitionId
+                                # This will be filtered out by our GUID filtering logic since it has no displayName
+                                $Pol = [PSCustomObject]@{
+                                    displayName = if ($policyDefId -match '/([^/]+)$') { $Matches[1] } else { 'Unknown Policy' }
+                                    policyType = if ($policyDefId -match '/managementgroups/') { 'Custom' } else { 'BuiltIn' }
+                                    mode = 'All'
+                                    version = ''
+                                    metadata = @{
+                                        deprecated = ''
+                                        category = ''
+                                    }
+                                }
+                                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Created minimal PolicyDef object for missing PolicyDef: ' + $policyDefId)
+                            }
                         }
                     } else {
                         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: policyDefinitionId is null or empty')
