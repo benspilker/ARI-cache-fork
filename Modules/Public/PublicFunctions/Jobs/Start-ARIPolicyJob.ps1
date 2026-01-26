@@ -83,8 +83,8 @@ function Start-ARIPolicyJob {
         }
     }
     
-    # Remove duplicates by id
-    $poltmp = $poltmp | Select-Object -Unique -Property id
+    # Remove duplicates by id while preserving full objects
+    $poltmp = $poltmp | Sort-Object -Property id -Unique
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Created poltmp with ' + $poltmp.Count + ' unique PolicyDef entries (processed ' + $poltmpCount + ' items)')
     
     # Debug: Show sample of PolicyDef IDs to help diagnose matching issues
@@ -314,11 +314,13 @@ function Start-ARIPolicyJob {
 
             foreach ($2 in $policyDefinitions)
                 {
-                    # Safely access policyDefinitionId
+                    # Safely access policyDefinitionId (policyDefinitions may be objects or raw strings)
                     $policyDefId = $null
                     if ($null -ne $2) {
                         try {
-                            if ($2 -is [PSCustomObject] -and $2.PSObject.Properties['policyDefinitionId']) {
+                            if ($2 -is [string]) {
+                                $policyDefId = $2
+                            } elseif ($2 -is [PSCustomObject] -and $2.PSObject.Properties['policyDefinitionId']) {
                                 $policyDefId = $2.policyDefinitionId
                             } elseif (($2 -is [System.Collections.Hashtable] -or $2 -is [System.Collections.IDictionary]) -and $2.ContainsKey('policyDefinitionId')) {
                                 $policyDefId = $2['policyDefinitionId']
@@ -337,7 +339,7 @@ function Start-ARIPolicyJob {
                         # or: /providers/microsoft.management/managementgroups/{mg}/providers/microsoft.authorization/policydefinitions/{guid}
                         $policyDefGuid = $null
                         # Case-insensitive regex match for GUID extraction
-                        if ($policyDefId -match 'policydefinitions/([a-fA-F0-9\-]{36})$') {
+                        if ($policyDefId -match 'policydefinitions/([a-fA-F0-9\-]{36})') {
                             $policyDefGuid = $Matches[1].ToLower()  # Normalize to lowercase for comparison
                         } elseif ($policyDefId -match '^[a-fA-F0-9\-]{36}$') {
                             # Already a GUID - normalize to lowercase
@@ -367,7 +369,7 @@ function Start-ARIPolicyJob {
                                 if ($null -ne $policyDefGuid) {
                                     $polDefGuid = $null
                                     # Case-insensitive regex match for GUID extraction
-                                    if ($polDefId -match 'policydefinitions/([a-fA-F0-9\-]{36})$') {
+                                    if ($polDefId -match 'policydefinitions/([a-fA-F0-9\-]{36})') {
                                         $polDefGuid = $Matches[1].ToLower()  # Normalize to lowercase
                                     } elseif ($polDefId -match '^[a-fA-F0-9\-]{36}$') {
                                         $polDefGuid = $polDefId.ToLower()  # Normalize to lowercase
@@ -410,7 +412,7 @@ function Start-ARIPolicyJob {
                                     
                                     if ($null -ne $polDefId) {
                                         $polDefGuidCheck = $null
-                                        if ($polDefId -match 'policydefinitions/([a-fA-F0-9\-]{36})$') {
+                                        if ($polDefId -match 'policydefinitions/([a-fA-F0-9\-]{36})') {
                                             $polDefGuidCheck = $Matches[1].ToLower()
                                         } elseif ($polDefId -match '^[a-fA-F0-9\-]{36}$') {
                                             $polDefGuidCheck = $polDefId.ToLower()

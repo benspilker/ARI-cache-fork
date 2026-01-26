@@ -27,7 +27,8 @@ Function Start-ARIReporOrchestration {
     $Automation,
     $TableStyle,
     $IncludeCosts,
-    $Advisories)
+    $Advisories,
+    $IncludePresidioPolicy)
 
     Write-Progress -activity 'Azure Inventory' -Status "65% Complete." -PercentComplete 65 -CurrentOperation "Starting the Report Phase.."
 
@@ -109,7 +110,17 @@ Function Start-ARIReporOrchestration {
                 
                 # Try to get error information from the failed job
                 $jobError = Receive-Job -Name 'Subscriptions' -ErrorAction SilentlyContinue
-                $jobErrorStream = Receive-Job -Name 'Subscriptions' -ErrorStream -ErrorAction SilentlyContinue
+                $jobErrorStream = @()
+                if ($SubscriptionsJob.ChildJobs) {
+                    foreach ($childJob in $SubscriptionsJob.ChildJobs) {
+                        if ($childJob.Error) {
+                            $jobErrorStream += $childJob.Error
+                        }
+                    }
+                }
+                if ($jobErrorStream.Count -eq 0) {
+                    $jobErrorStream = $null
+                }
                 
                 # Get job exception details
                 if ($SubscriptionsJob.Error) {
@@ -161,7 +172,7 @@ Function Start-ARIReporOrchestration {
                             }
                         }
                         $childOutput = Receive-Job -Job $childJob -ErrorAction SilentlyContinue
-                        $childErrorStream = Receive-Job -Job $childJob -ErrorStream -ErrorAction SilentlyContinue
+                        $childErrorStream = $childJob.Error
                         if ($null -ne $childOutput) {
                             Write-Host "    Child job output:" -ForegroundColor Yellow
                             $childOutput | ForEach-Object { Write-Host "      $_" -ForegroundColor Gray }
@@ -366,7 +377,7 @@ Function Start-ARIReporOrchestration {
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Starting Default Data Reporting.')
     Write-Host "[DEBUG] Start-ARIReporOrchestration: About to call Start-ARIExtraReports" -ForegroundColor Magenta
     try {
-        Start-ARIExtraReports -File $File -Quotas $Quotas -SecurityCenter $SecurityCenter -SkipPolicy $SkipPolicy -SkipAdvisory $SkipAdvisory -IncludeCosts $IncludeCosts -TableStyle $TableStyle -Advisories $Advisories
+        Start-ARIExtraReports -File $File -Quotas $Quotas -SecurityCenter $SecurityCenter -SkipPolicy $SkipPolicy -SkipAdvisory $SkipAdvisory -IncludeCosts $IncludeCosts -TableStyle $TableStyle -Advisories $Advisories -IncludePresidioPolicy $IncludePresidioPolicy
         Write-Host "[DEBUG] Start-ARIReporOrchestration: Start-ARIExtraReports completed successfully" -ForegroundColor Magenta
     } catch {
         # Safe error handling - check property existence before accessing

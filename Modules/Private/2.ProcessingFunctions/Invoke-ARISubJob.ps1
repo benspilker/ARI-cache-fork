@@ -86,7 +86,7 @@ function Invoke-ARISubJob {
                 param($SubsParam, $ResParam, $ModulePath, $CostDataParam, $FunctionPath)
                 
                 # Import module first
-                Import-Module $ModulePath -Force -ErrorAction Stop
+                Import-Module $ModulePath -Force -DisableNameChecking -ErrorAction Stop
                 
                 # Explicitly dot-source the function file to ensure it's available
                 # This is a fallback in case module import doesn't load the function
@@ -147,7 +147,7 @@ function Invoke-ARISubJob {
                 param($SubsParam, $ResParam, $ModulePath, $CostDataParam, $FunctionPath)
                 
                 # Import module first
-                Import-Module $ModulePath -Force -ErrorAction Stop
+                Import-Module $ModulePath -Force -DisableNameChecking -ErrorAction Stop
                 
                 # Explicitly dot-source the function file to ensure it's available
                 # This is a fallback in case module import doesn't load the function
@@ -206,4 +206,3 @@ function Invoke-ARISubJob {
         }
 
 }
-

@@ -55,6 +55,28 @@ function Get-ARIAPIResources {
     $ResourceHealthHistoryDate = (Get-Date).AddMonths(-6)
     $APIResults = @()
 
+    function Get-ARIAllPages {
+        param([string]$Url)
+
+        $items = [System.Collections.ArrayList]::new()
+        $nextUrl = $Url
+        while (-not [string]::IsNullOrWhiteSpace($nextUrl)) {
+            $resp = Invoke-RestMethod -Uri $nextUrl -Headers $header -Method GET
+            if ($null -ne $resp) {
+                if ($resp.PSObject.Properties['value'] -and $null -ne $resp.value) {
+                    $pageItems = if ($resp.value -is [System.Array]) { $resp.value } else { @($resp.value) }
+                    foreach ($item in $pageItems) { $null = $items.Add($item) }
+                } else {
+                    $null = $items.Add($resp)
+                }
+                $nextUrl = if ($resp.PSObject.Properties['nextLink']) { $resp.nextLink } else { $null }
+            } else {
+                $nextUrl = $null
+            }
+        }
+        return $items.ToArray()
+    }
+
     foreach ($Subscription in $Subscriptions)
         {
             $ResourceHealth = ""
@@ -201,12 +223,12 @@ function Get-ARIAPIResources {
                         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Collected ' + $PolicyAssignCount + ' policy assignment(s) for subscription ' + $sub)
                         Start-Sleep -Milliseconds 200
                         $url = ('https://'+ $AzURL +'/subscriptions/'+$sub+'/providers/Microsoft.Authorization/policySetDefinitions?api-version=2023-04-01')
-                        $PolicySetDef = (Invoke-RestMethod -Uri $url -Headers $header -Method GET).value
+                        $PolicySetDef = Get-ARIAllPages -Url $url
                         $PolicySetDefCount = if ($null -ne $PolicySetDef -and $PolicySetDef -is [System.Array]) { $PolicySetDef.Count } elseif ($null -ne $PolicySetDef) { 1 } else { 0 }
                         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Collected ' + $PolicySetDefCount + ' policy set definition(s)')
                         Start-Sleep -Milliseconds 200
                         $url = ('https://'+ $AzURL +'/subscriptions/'+$sub+'/providers/Microsoft.Authorization/policyDefinitions?api-version=2023-04-01')
-                        $PolicyDef = (Invoke-RestMethod -Uri $url -Headers $header -Method GET).value
+                        $PolicyDef = Get-ARIAllPages -Url $url
                         $PolicyDefCount = if ($null -ne $PolicyDef -and $PolicyDef -is [System.Array]) { $PolicyDef.Count } elseif ($null -ne $PolicyDef) { 1 } else { 0 }
                         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Collected ' + $PolicyDefCount + ' policy definition(s)')
                     }

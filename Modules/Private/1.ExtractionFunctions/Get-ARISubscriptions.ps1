@@ -18,9 +18,42 @@ Authors: Claudio Merola
 #>
 function Get-ARISubscriptions {
     Param ($TenantID,$SubscriptionID,$PlatOS)
+    function Invoke-QuietAzIdentityLogging {
+        param([scriptblock]$ScriptBlock)
+
+        $prevEnabled = $env:AZURE_IDENTITY_LOGGING_ENABLED
+        $prevLevel = $env:AZURE_IDENTITY_LOGGING_LEVEL
+        $prevDebug = $DebugPreference
+        $prevVerbose = $VerbosePreference
+        $prevInfo = $InformationPreference
+        $prevAzDebug = $null
+        $prevAzAccountsDebug = $null
+        $hadAzDebug = $PSDefaultParameterValues.ContainsKey('Az.*:Debug')
+        $hadAzAccountsDebug = $PSDefaultParameterValues.ContainsKey('Az.Accounts.*:Debug')
+        if ($hadAzDebug) { $prevAzDebug = $PSDefaultParameterValues['Az.*:Debug'] }
+        if ($hadAzAccountsDebug) { $prevAzAccountsDebug = $PSDefaultParameterValues['Az.Accounts.*:Debug'] }
+        try {
+            $env:AZURE_IDENTITY_LOGGING_ENABLED = 'false'
+            $env:AZURE_IDENTITY_LOGGING_LEVEL = 'warning'
+            $DebugPreference = 'SilentlyContinue'
+            $VerbosePreference = 'SilentlyContinue'
+            $InformationPreference = 'SilentlyContinue'
+            $PSDefaultParameterValues['Az.*:Debug'] = $false
+            $PSDefaultParameterValues['Az.Accounts.*:Debug'] = $false
+            & $ScriptBlock
+        } finally {
+            $DebugPreference = $prevDebug
+            $VerbosePreference = $prevVerbose
+            $InformationPreference = $prevInfo
+            if ($hadAzDebug) { $PSDefaultParameterValues['Az.*:Debug'] = $prevAzDebug } else { $PSDefaultParameterValues.Remove('Az.*:Debug') | Out-Null }
+            if ($hadAzAccountsDebug) { $PSDefaultParameterValues['Az.Accounts.*:Debug'] = $prevAzAccountsDebug } else { $PSDefaultParameterValues.Remove('Az.Accounts.*:Debug') | Out-Null }
+            if ($null -ne $prevEnabled) { $env:AZURE_IDENTITY_LOGGING_ENABLED = $prevEnabled } else { Remove-Item Env:AZURE_IDENTITY_LOGGING_ENABLED -ErrorAction SilentlyContinue }
+            if ($null -ne $prevLevel) { $env:AZURE_IDENTITY_LOGGING_LEVEL = $prevLevel } else { Remove-Item Env:AZURE_IDENTITY_LOGGING_LEVEL -ErrorAction SilentlyContinue }
+        }
+    }
     if($PlatOS -eq 'Azure CloudShell')
         {
-            $Subscriptions = Get-AzSubscription -WarningAction SilentlyContinue -Debug:$false
+            $Subscriptions = Invoke-QuietAzIdentityLogging { Get-AzSubscription -WarningAction SilentlyContinue -Debug:$false }
             
             if ($SubscriptionID)
                 {
@@ -43,7 +76,7 @@ function Get-ARISubscriptions {
             Write-Host "Extracting Subscriptions from Tenant $TenantID"
             try
                 {
-                    $Subscriptions = Get-AzSubscription -TenantId $TenantID -WarningAction SilentlyContinue -Debug:$false
+                    $Subscriptions = Invoke-QuietAzIdentityLogging { Get-AzSubscription -TenantId $TenantID -WarningAction SilentlyContinue -Debug:$false }
                 }
             catch
                 {

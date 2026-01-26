@@ -28,9 +28,7 @@ function Build-ARIInitialBlock {
     $ProcessingTime = if($ProcessingRunTime.Elapsed.Totalminutes -lt 1){($ProcessingRunTime.Elapsed.Seconds.ToString()+' Seconds')}else{($ProcessingRunTime.Elapsed.Totalminutes.ToString('#######.##')+' Minutes')}
     $ReportTime = if($ReportingRunTime.Elapsed.Totalminutes -lt 1){($ReportingRunTime.Elapsed.Seconds.ToString()+' Seconds')}else{($ReportingRunTime.Elapsed.Totalminutes.ToString('#######.##')+' Minutes')}
 
-    $DebugPreference = 'SilentlyContinue'
-    $User = (get-azcontext -WarningAction SilentlyContinue -InformationAction SilentlyContinue | Select-Object -Property Account -Unique).Account.Id
-    $DebugPreference = 'Continue'
+    $User = (Get-AzContext -WarningAction SilentlyContinue -InformationAction SilentlyContinue -Debug:$false | Select-Object -Property Account -Unique).Account.Id
 
     $WS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Overview' } | Select-Object -First 1
     if ($null -eq $WS) {

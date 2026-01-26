@@ -166,8 +166,30 @@ Function Invoke-CachedARI-Patched {
         [switch]$DiagramFullEnvironment,
         [switch]$UseExistingCache,
         [Alias("NoExcel","SkipReport")]
-        [switch]$SkipExcel
+        [switch]$SkipExcel,
+        [switch]$IncludePresidioPolicy
         )
+
+    $script:PrevDebugPreference = $DebugPreference
+    $script:PrevVerbosePreference = $VerbosePreference
+    $script:PrevInformationPreference = $InformationPreference
+    $script:PrevDefaultDebug = $null
+    $script:PrevDefaultVerbose = $null
+    $script:PrevDefaultInfo = $null
+    $script:HadDefaultDebug = $PSDefaultParameterValues.ContainsKey('*:Debug')
+    $script:HadDefaultVerbose = $PSDefaultParameterValues.ContainsKey('*:Verbose')
+    $script:HadDefaultInfo = $PSDefaultParameterValues.ContainsKey('*:InformationAction')
+    if ($script:HadDefaultDebug) { $script:PrevDefaultDebug = $PSDefaultParameterValues['*:Debug'] }
+    if ($script:HadDefaultVerbose) { $script:PrevDefaultVerbose = $PSDefaultParameterValues['*:Verbose'] }
+    if ($script:HadDefaultInfo) { $script:PrevDefaultInfo = $PSDefaultParameterValues['*:InformationAction'] }
+    if (-not $PSBoundParameters.ContainsKey('Debug')) {
+        $DebugPreference = 'SilentlyContinue'
+        $VerbosePreference = 'SilentlyContinue'
+        $InformationPreference = 'SilentlyContinue'
+        $PSDefaultParameterValues['*:Debug'] = $false
+        $PSDefaultParameterValues['*:Verbose'] = $false
+        $PSDefaultParameterValues['*:InformationAction'] = 'SilentlyContinue'
+    }
 
     # DEBUG: Log switch parameter state immediately
     Write-Host "[DEBUG] UseExistingCache parameter check:" -ForegroundColor Magenta
@@ -275,6 +297,17 @@ Function Invoke-CachedARI-Patched {
     # Force NoAutoUpdate when using existing cache to prevent breaking the patched version
     # Check both IsPresent and direct boolean check for switch parameter
     $useCache = $UseExistingCache.IsPresent -or $UseExistingCache
+    $forceExtraction = $false
+
+    if (-not $script:ARIModulePath) {
+        $moduleRoot = Resolve-Path (Join-Path $PSScriptRoot '..\..\..') -ErrorAction SilentlyContinue
+        if ($moduleRoot) {
+            $modulePath = Join-Path $moduleRoot 'AzureResourceInventory.psm1'
+            if (Test-Path $modulePath) {
+                $script:ARIModulePath = $modulePath
+            }
+        }
+    }
     if ($useCache) {
         # CRITICAL: Force NoAutoUpdate switch to TRUE to prevent auto-update from breaking patched version
         # For switch parameters, we need to add it to PSBoundParameters or set the variable directly
@@ -372,7 +405,7 @@ Function Invoke-CachedARI-Patched {
 
     Set-ARIFolder -DefaultPath $DefaultPath -DiagramCache $DiagramCache -ReportCache $ReportCache
 
-    if ($UseExistingCache.IsPresent) {
+    if ($useCache) {
         Write-Host "[UseExistingCache] Skipping cache clearing and extraction - using existing cache files" -ForegroundColor Green
         
         # Check if cache files exist
@@ -381,8 +414,29 @@ Function Invoke-CachedARI-Patched {
         if ($cacheFileCount -eq 0) {
             Write-Host "[UseExistingCache] Warning: No cache files found in $ReportCache" -ForegroundColor Yellow
             Write-Host "[UseExistingCache] Excel generation may fail or produce empty report" -ForegroundColor Yellow
+            $forceExtraction = $true
         } else {
-            Write-Host "[UseExistingCache] Found $cacheFileCount cache file(s) - proceeding to Excel generation" -ForegroundColor Green
+            $nonResourceCacheNames = @(
+                'Policy.json',
+                'PolicyBatch.json',
+                'Advisory.json',
+                'AdvisoryRaw.json',
+                'Security.json',
+                'SecurityCenter.json',
+                'Outages.json',
+                'Retirements.json',
+                'ResourceHealth.json'
+            )
+            $resourceCacheFiles = $cacheFiles | Where-Object { $_.Name -notin $nonResourceCacheNames }
+            if ($resourceCacheFiles.Count -eq 0) {
+                Write-Host "[UseExistingCache] Warning: Only Policy/Advisory cache files found - forcing extraction to build resource cache" -ForegroundColor Yellow
+                $forceExtraction = $true
+            } else {
+                Write-Host "[UseExistingCache] Found $cacheFileCount cache file(s) - proceeding to Excel generation" -ForegroundColor Green
+            }
+        }
+        if ($forceExtraction) {
+            $useCache = $false
         }
         
         # Initialize empty variables for reporting phase (some may be needed)
@@ -1354,7 +1408,7 @@ Function Invoke-CachedARI-Patched {
 
     # Skip processing phase when using existing cache (cache files already exist)
     # But still run Start-ARIExtraJobs to create necessary jobs for reporting (like Subscriptions)
-    if ($UseExistingCache.IsPresent) {
+    if ($useCache) {
         Write-Host "[UseExistingCache] Skipping resource processing - using existing cache files directly" -ForegroundColor Green
         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[UseExistingCache] Skipped Start-ARIProcessOrchestration')
         
@@ -1488,7 +1542,7 @@ Function Invoke-CachedARI-Patched {
         $ReportingRunTime = [System.Diagnostics.Stopwatch]::StartNew()
 
         try {
-            Start-ARIReporOrchestration -ReportCache $ReportCache -SecurityCenter $SecurityCenter -File $File -Quotas $Quotas -SkipPolicy $SkipPolicy -SkipAdvisory $SkipAdvisory -IncludeCosts $IncludeCosts -Automation $Automation -TableStyle $TableStyle -Advisories $Advisories
+            Start-ARIReporOrchestration -ReportCache $ReportCache -SecurityCenter $SecurityCenter -File $File -Quotas $Quotas -SkipPolicy $SkipPolicy -SkipAdvisory $SkipAdvisory -IncludeCosts $IncludeCosts -Automation $Automation -TableStyle $TableStyle -Advisories $Advisories -IncludePresidioPolicy $IncludePresidioPolicy
         } catch {
             # Safe error handling - check property existence before accessing
             $errorDetails = if ($null -ne $_ -and $null -ne $_.Exception) { $_.Exception.Message } else { "Unknown error" }
@@ -1829,7 +1883,7 @@ Function Invoke-CachedARI-Patched {
     Clear-ARIMemory
 
     # Clear Cache Folder for future runs (skip if using existing cache)
-    if (-not $UseExistingCache.IsPresent) {
+    if (-not $useCache) {
         Clear-ARICacheFolder -ReportCache $ReportCache
     } else {
         Write-Host "[UseExistingCache] Preserving cache files for future use" -ForegroundColor Green
@@ -1886,4 +1940,10 @@ Function Invoke-CachedARI-Patched {
         Write-Host "Cache files saved to: $ReportCache" -ForegroundColor Cyan
     }
 
+    $DebugPreference = $script:PrevDebugPreference
+    $VerbosePreference = $script:PrevVerbosePreference
+    $InformationPreference = $script:PrevInformationPreference
+    if ($script:HadDefaultDebug) { $PSDefaultParameterValues['*:Debug'] = $script:PrevDefaultDebug } else { $PSDefaultParameterValues.Remove('*:Debug') | Out-Null }
+    if ($script:HadDefaultVerbose) { $PSDefaultParameterValues['*:Verbose'] = $script:PrevDefaultVerbose } else { $PSDefaultParameterValues.Remove('*:Verbose') | Out-Null }
+    if ($script:HadDefaultInfo) { $PSDefaultParameterValues['*:InformationAction'] = $script:PrevDefaultInfo } else { $PSDefaultParameterValues.Remove('*:InformationAction') | Out-Null }
 }

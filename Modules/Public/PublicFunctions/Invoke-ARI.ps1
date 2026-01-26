@@ -163,7 +163,8 @@ Function Invoke-ARI {
         [switch]$Lite,
         [switch]$Help,
         [switch]$DeviceLogin,
-        [switch]$DiagramFullEnvironment
+        [switch]$DiagramFullEnvironment,
+        [switch]$IncludePresidioPolicy
         )
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Debugging Mode: On. ErrorActionPreference was set to "Continue", every error will be presented.')
@@ -387,7 +388,7 @@ Function Invoke-ARI {
 
     $ReportingRunTime = [System.Diagnostics.Stopwatch]::StartNew()
 
-        Start-ARIReporOrchestration -ReportCache $ReportCache -SecurityCenter $SecurityCenter -File $File -Quotas $Quotas -SkipPolicy $SkipPolicy -SkipAdvisory $SkipAdvisory -IncludeCosts $IncludeCosts -Automation $Automation -TableStyle $TableStyle
+        Start-ARIReporOrchestration -ReportCache $ReportCache -SecurityCenter $SecurityCenter -File $File -Quotas $Quotas -SkipPolicy $SkipPolicy -SkipAdvisory $SkipAdvisory -IncludeCosts $IncludeCosts -Automation $Automation -TableStyle $TableStyle -IncludePresidioPolicy $IncludePresidioPolicy
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Generating Overview sheet (Charts).')
 

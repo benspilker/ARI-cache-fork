@@ -18,7 +18,7 @@ Authors: Claudio Merola
 #>
 
 function Start-ARIExtraReports {
-    Param($File, $Quotas, $SecurityCenter, $SkipPolicy, $SkipAdvisory, $IncludeCosts, $TableStyle, $Advisories)
+    Param($File, $Quotas, $SecurityCenter, $SkipPolicy, $SkipAdvisory, $IncludeCosts, $TableStyle, $Advisories, $IncludePresidioPolicy)
 
     Write-Progress -activity 'Azure Inventory' -Status "70% Complete." -PercentComplete 70 -CurrentOperation "Reporting Extra Resources.."
 
@@ -208,10 +208,12 @@ function Start-ARIExtraReports {
         if ($null -ne $Pol -and $Pol.Count -gt 0) {
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Generating Policy Sheet from processed cache data.')
             
-            # Filter out records without human-readable names (GUIDs only)
-            # Only include records where Policy has a displayName (not a GUID) and Initiative has a displayName (not "Policy Set: <guid>")
+            # Filter out records without human-readable Policy names (GUIDs only)
+            # Initiative GUIDs are allowed, but we try to resolve them to display names when possible
             $filteredPol = @()
             $excludedCount = 0
+            $excludedBlankCount = 0
+            $excludedPresidioCount = 0
             foreach ($record in $Pol) {
                 if ($null -eq $record) { continue }
                 
@@ -234,7 +236,52 @@ function Start-ARIExtraReports {
                         $initiativeName = $record['Initiative']
                     }
                 }
+
+                # If Initiative is a Policy Set GUID label, try to resolve it
+                if ($initiativeName -is [string] -and $initiativeName -match '^Policy Set:\s*([a-f0-9-]{36})$') {
+                    $initiativeGuid = $Matches[1]
+                    $policySetDefsForResolve = $null
+                    $policySetDefsVar = Get-Variable -Name 'PolicySetDefRaw' -ErrorAction SilentlyContinue
+                    if ($null -ne $policySetDefsVar) {
+                        $policySetDefsForResolve = $policySetDefsVar.Value
+                    }
+                    if ($null -ne $policySetDefsForResolve) {
+                        $policySetMatch = $policySetDefsForResolve | Where-Object {
+                            $_.id -is [string] -and $_.id -match ([regex]::Escape($initiativeGuid))
+                        } | Select-Object -First 1
+                        if ($null -ne $policySetMatch -and $null -ne $policySetMatch.properties -and -not [string]::IsNullOrWhiteSpace($policySetMatch.properties.displayName)) {
+                            $initiativeName = $policySetMatch.properties.displayName
+                            if ($record -is [PSCustomObject]) {
+                                $record.Initiative = $initiativeName
+                            } elseif ($record -is [System.Collections.Hashtable] -or $record -is [System.Collections.IDictionary]) {
+                                $record['Initiative'] = $initiativeName
+                            }
+                        }
+                    }
+                }
+
+                # If Policy exists but Initiative is blank, default it
+                if (-not [string]::IsNullOrWhiteSpace($policyName) -and [string]::IsNullOrWhiteSpace($initiativeName)) {
+                    $initiativeName = "Microsoft cloud security benchmark"
+                    if ($record -is [PSCustomObject]) {
+                        $record.Initiative = $initiativeName
+                    } elseif ($record -is [System.Collections.Hashtable] -or $record -is [System.Collections.IDictionary]) {
+                        $record['Initiative'] = $initiativeName
+                    }
+                }
                 
+                # Drop rows with no Policy (policy is required for a row)
+                if ([string]::IsNullOrWhiteSpace($policyName)) {
+                    $excludedBlankCount++
+                    continue
+                }
+
+                # Drop Presidio initiatives unless explicitly included
+                if (-not $IncludePresidioPolicy -and $initiativeName -is [string] -and $initiativeName -match 'Presidio') {
+                    $excludedPresidioCount++
+                    continue
+                }
+
                 # Check if Policy name is a GUID (36-character GUID pattern)
                 $isPolicyGuid = $false
                 if ($null -ne $policyName -and $policyName -is [string]) {
@@ -244,17 +291,8 @@ function Start-ARIExtraReports {
                     }
                 }
                 
-                # Check if Initiative name indicates no displayName was found
-                $isInitiativeGuid = $false
-                if ($null -ne $initiativeName -and $initiativeName -is [string]) {
-                    # If Initiative starts with "Policy Set:", it means no displayName was found
-                    if ($initiativeName -match '^Policy Set:') {
-                        $isInitiativeGuid = $true
-                    }
-                }
-                
-                # Only include records with human-readable names
-                if (-not $isPolicyGuid -and -not $isInitiativeGuid) {
+                # Only include records with human-readable Policy names
+                if (-not $isPolicyGuid) {
                     $filteredPol += $record
                 } else {
                     $excludedCount++
@@ -264,6 +302,12 @@ function Start-ARIExtraReports {
             # Replace Pol with filtered results
             $Pol = $filteredPol
             
+            if ($excludedBlankCount -gt 0) {
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Filtered out ' + $excludedBlankCount + ' Policy record(s) with blank Policy names')
+            }
+            if ($excludedPresidioCount -gt 0) {
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Filtered out ' + $excludedPresidioCount + ' Policy record(s) from Presidio initiatives (use -IncludePresidioPolicy to include)')
+            }
             if ($excludedCount -gt 0) {
                 Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Filtered out ' + $excludedCount + ' Policy record(s) without human-readable names (GUIDs only)')
             }
@@ -535,16 +579,18 @@ function Start-ARIExtraReports {
                     $Pol = @($Pol)
                 }
                 
-                # Filter out records without human-readable names (GUIDs only)
-                # Only include records where Policy has a displayName (not a GUID) and Initiative has a displayName (not "Policy Set: <guid>")
+                # Filter out records without human-readable Policy names (GUIDs only)
+                # Initiative GUIDs are allowed, but we try to resolve them to display names when possible
                 $filteredPol = @()
                 $excludedCount = 0
+                $excludedBlankCount = 0
+                $excludedPresidioCount = 0
                 foreach ($record in $Pol) {
                     if ($null -eq $record) { continue }
                     
-                    # Get Policy name and Initiative name
-                    $policyName = $null
-                    $initiativeName = $null
+                # Get Policy name and Initiative name
+                $policyName = $null
+                $initiativeName = $null
                     
                     if ($record -is [PSCustomObject]) {
                         if ($record.PSObject.Properties.Name -contains 'Policy') {
@@ -553,15 +599,55 @@ function Start-ARIExtraReports {
                         if ($record.PSObject.Properties.Name -contains 'Initiative') {
                             $initiativeName = $record.Initiative
                         }
-                    } elseif ($record -is [System.Collections.Hashtable] -or $record -is [System.Collections.IDictionary]) {
-                        if ($record.ContainsKey('Policy')) {
-                            $policyName = $record['Policy']
-                        }
-                        if ($record.ContainsKey('Initiative')) {
-                            $initiativeName = $record['Initiative']
+                } elseif ($record -is [System.Collections.Hashtable] -or $record -is [System.Collections.IDictionary]) {
+                    if ($record.ContainsKey('Policy')) {
+                        $policyName = $record['Policy']
+                    }
+                    if ($record.ContainsKey('Initiative')) {
+                        $initiativeName = $record['Initiative']
+                    }
+                }
+
+                # If Initiative is a Policy Set GUID label, try to resolve it
+                if ($initiativeName -is [string] -and $initiativeName -match '^Policy Set:\s*([a-f0-9-]{36})$') {
+                    $initiativeGuid = $Matches[1]
+                    if ($null -ne $PolicySetDefRaw) {
+                        $policySetMatch = $PolicySetDefRaw | Where-Object {
+                            $_.id -is [string] -and $_.id -match ([regex]::Escape($initiativeGuid))
+                        } | Select-Object -First 1
+                        if ($null -ne $policySetMatch -and $null -ne $policySetMatch.properties -and -not [string]::IsNullOrWhiteSpace($policySetMatch.properties.displayName)) {
+                            $initiativeName = $policySetMatch.properties.displayName
+                            if ($record -is [PSCustomObject]) {
+                                $record.Initiative = $initiativeName
+                            } elseif ($record -is [System.Collections.Hashtable] -or $record -is [System.Collections.IDictionary]) {
+                                $record['Initiative'] = $initiativeName
+                            }
                         }
                     }
+                }
+
+                # If Policy exists but Initiative is blank, default it
+                if (-not [string]::IsNullOrWhiteSpace($policyName) -and [string]::IsNullOrWhiteSpace($initiativeName)) {
+                    $initiativeName = "Microsoft cloud security benchmark"
+                    if ($record -is [PSCustomObject]) {
+                        $record.Initiative = $initiativeName
+                    } elseif ($record -is [System.Collections.Hashtable] -or $record -is [System.Collections.IDictionary]) {
+                        $record['Initiative'] = $initiativeName
+                    }
+                }
                     
+                    # Drop rows with no Policy (policy is required for a row)
+                    if ([string]::IsNullOrWhiteSpace($policyName)) {
+                        $excludedBlankCount++
+                        continue
+                    }
+
+                    # Drop Presidio initiatives unless explicitly included
+                    if (-not $IncludePresidioPolicy -and $initiativeName -is [string] -and $initiativeName -match 'Presidio') {
+                        $excludedPresidioCount++
+                        continue
+                    }
+
                     # Check if Policy name is a GUID (36-character GUID pattern)
                     $isPolicyGuid = $false
                     if ($null -ne $policyName -and $policyName -is [string]) {
@@ -571,17 +657,8 @@ function Start-ARIExtraReports {
                         }
                     }
                     
-                    # Check if Initiative name indicates no displayName was found
-                    $isInitiativeGuid = $false
-                    if ($null -ne $initiativeName -and $initiativeName -is [string]) {
-                        # If Initiative starts with "Policy Set:", it means no displayName was found
-                        if ($initiativeName -match '^Policy Set:') {
-                            $isInitiativeGuid = $true
-                        }
-                    }
-                    
-                    # Only include records with human-readable names
-                    if (-not $isPolicyGuid -and -not $isInitiativeGuid) {
+                    # Only include records with human-readable Policy names
+                    if (-not $isPolicyGuid) {
                         $filteredPol += $record
                     } else {
                         $excludedCount++
@@ -591,6 +668,12 @@ function Start-ARIExtraReports {
                 # Replace Pol with filtered results
                 $Pol = $filteredPol
                 
+                if ($excludedBlankCount -gt 0) {
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Filtered out ' + $excludedBlankCount + ' Policy record(s) with blank Policy names')
+                }
+                if ($excludedPresidioCount -gt 0) {
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Filtered out ' + $excludedPresidioCount + ' Policy record(s) from Presidio initiatives (use -IncludePresidioPolicy to include)')
+                }
                 if ($excludedCount -gt 0) {
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Filtered out ' + $excludedCount + ' Policy record(s) without human-readable names (GUIDs only)')
                 }
