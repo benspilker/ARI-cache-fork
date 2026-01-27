@@ -1162,6 +1162,15 @@ function Start-ARIExtraReports {
 
     <################################################################### SUBSCRIPTIONS ###################################################################>
 
+    $skipSubscriptionSheet = $false
+    if ($null -ne $env:ARI_SKIP_SUBSCRIPTION_SHEET -and $env:ARI_SKIP_SUBSCRIPTION_SHEET -ne '') {
+        $skipSubscriptionSheet = $env:ARI_SKIP_SUBSCRIPTION_SHEET -match '^(1|true|yes)$'
+    }
+    if ($skipSubscriptionSheet) {
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Skipping Subscriptions sheet generation (ARI_SKIP_SUBSCRIPTION_SHEET is set).')
+        return
+    }
+
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Generating Subscription sheet.')
 
     Write-Progress -activity 'Azure Resource Inventory Subscriptions' -Status "50% Complete." -PercentComplete 50 -CurrentOperation "Building Subscriptions Sheet"
