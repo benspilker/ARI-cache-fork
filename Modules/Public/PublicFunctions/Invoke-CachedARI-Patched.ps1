@@ -1214,6 +1214,9 @@ Function Invoke-CachedARI-Patched {
                             
                             # Save Policy data to Policy.json so Start-ARIExtraReports can find it
                             # Use memory-efficient approach: write directly to file instead of holding entire JSON in memory
+                            if ($env:ARI_SKIP_POLICY_JSON_SAVE -eq '1') {
+                                Write-Host "[UseExistingCache] Policy.json save disabled by ARI_SKIP_POLICY_JSON_SAVE - using in-memory Policy data only" -ForegroundColor Yellow
+                            } else {
                             try {
                                 $policyJsonPath = Join-Path $ReportCache 'Policy.json'
                                 
@@ -1265,6 +1268,7 @@ Function Invoke-CachedARI-Patched {
                                 # Clear variables on error to free memory
                                 Remove-Variable -Name policyJsonContent -ErrorAction SilentlyContinue
                                 Remove-Variable -Name policyJsonData -ErrorAction SilentlyContinue
+                            }
                             }
                         } else {
                             # SkipPolicy is true - initialize empty Policy variables
