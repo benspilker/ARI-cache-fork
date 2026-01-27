@@ -22,8 +22,7 @@
 foreach ($directory in @('Modules\Private', '.\Modules\Public\PublicFunctions')) {
     $dirPath = Join-Path $PSScriptRoot $directory
     if (Test-Path $dirPath) {
-        Get-ChildItem -Path "$dirPath\\*.ps1" -Recurse -ErrorAction SilentlyContinue |
-            ForEach-Object { . $_.FullName } -ErrorAction SilentlyContinue
+        Get-ChildItem -Path "$dirPath\\*.ps1" -Recurse -ErrorAction SilentlyContinue | ForEach-Object { . $_.FullName }
     }
 }
 
