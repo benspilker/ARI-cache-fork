@@ -997,13 +997,63 @@ Function Invoke-CachedARI-Patched {
                 }
             }
             
+            function Get-WorkerAvailableMemoryMB {
+                try {
+                    $cgroupLimitPaths = @(
+                        '/sys/fs/cgroup/memory.max',
+                        '/sys/fs/cgroup/memory/memory.limit_in_bytes'
+                    )
+                    $cgroupUsagePaths = @(
+                        '/sys/fs/cgroup/memory.current',
+                        '/sys/fs/cgroup/memory/memory.usage_in_bytes'
+                    )
+
+                    $limitBytes = $null
+                    foreach ($p in $cgroupLimitPaths) {
+                        if (Test-Path $p) {
+                            $raw = (Get-Content $p -Raw -ErrorAction SilentlyContinue).Trim()
+                            if ($raw -and $raw -ne 'max' -and $raw -match '^\d+$') {
+                                $limitBytes = [int64]$raw
+                                break
+                            }
+                        }
+                    }
+
+                    $usageBytes = $null
+                    foreach ($p in $cgroupUsagePaths) {
+                        if (Test-Path $p) {
+                            $raw = (Get-Content $p -Raw -ErrorAction SilentlyContinue).Trim()
+                            if ($raw -and $raw -match '^\d+$') {
+                                $usageBytes = [int64]$raw
+                                break
+                            }
+                        }
+                    }
+
+                    if ($limitBytes -and $usageBytes) {
+                        $availableBytes = [math]::Max($limitBytes - $usageBytes, 0)
+                        return [math]::Round($availableBytes / 1MB, 2)
+                    }
+                } catch { }
+                return $null
+            }
+
             if (-not $skipPolicyValue -and -not $hasPolicyData) {
                 # Check available memory before attempting Policy collection
                 # If we're already low on memory, skip Policy collection to avoid OOM
                 $skipPolicyDueToMemory = $false
                 try {
-                    # Try Linux /proc/meminfo first (Windmill runs on Linux)
-                    if (Test-Path "/proc/meminfo") {
+                    # Prefer cgroup worker memory if available (Windmill)
+                    $availableMB = Get-WorkerAvailableMemoryMB
+                    if ($null -ne $availableMB) {
+                        Write-Host "[UseExistingCache] Available worker memory: $availableMB MB" -ForegroundColor Gray
+                        if ($availableMB -lt 500) {
+                            Write-Host "[UseExistingCache] WARNING: Low worker memory detected ($availableMB MB free). Skipping Policy collection to prevent OOM." -ForegroundColor Yellow
+                            Write-Host "[UseExistingCache] Policy data will not be included in this report. Consider collecting Policy data during batch processing." -ForegroundColor Yellow
+                            $skipPolicyDueToMemory = $true
+                        }
+                    } elseif (Test-Path "/proc/meminfo") {
+                        # Fallback to system memory on Linux
                         $memInfo = Get-Content "/proc/meminfo" | Select-String -Pattern "MemAvailable|MemFree"
                         if ($memInfo) {
                             $memAvailableLine = $memInfo | Where-Object { $_ -match "MemAvailable" }
@@ -1886,16 +1936,25 @@ Function Invoke-CachedARI-Patched {
                 }
             }
 
-        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Generating Overview sheet (Charts).')
-
-        # Ensure Subscriptions is initialized and is an array before passing to Start-ARIExcelCustomization
-        if ($null -eq $Subscriptions) {
-            $Subscriptions = @()
-        } elseif ($Subscriptions -isnot [System.Array]) {
-            $Subscriptions = @($Subscriptions)
+        $skipCharts = $false
+        if ($env:ARI_SKIP_CHARTS -and $env:ARI_SKIP_CHARTS -ne '0') {
+            $skipCharts = $true
         }
 
+        if ($skipCharts) {
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Skipping Overview/Charts generation (ARI_SKIP_CHARTS is set).')
+        } else {
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Generating Overview sheet (Charts).')
+
+            # Ensure Subscriptions is initialized and is an array before passing to Start-ARIExcelCustomization
+            if ($null -eq $Subscriptions) {
+                $Subscriptions = @()
+            } elseif ($Subscriptions -isnot [System.Array]) {
+                $Subscriptions = @($Subscriptions)
+            }
+
             $TotalRes = Start-ARIExcelCustomization -File $File -TableStyle $TableStyle -PlatOS $PlatOS -Subscriptions $Subscriptions -ExtractionRunTime $ExtractionRuntime -ProcessingRunTime $ProcessingRunTime -ReportingRunTime $ReportingRunTime -IncludeCosts $IncludeCosts -RunLite $RunLite -Overview $Overview
+        }
 
             Write-Progress -activity 'Azure Inventory' -Status "95% Complete." -PercentComplete 95 -CurrentOperation "Excel Customization Completed.."
 
