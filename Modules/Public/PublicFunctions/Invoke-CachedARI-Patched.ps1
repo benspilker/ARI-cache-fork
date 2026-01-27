@@ -748,11 +748,43 @@ Function Invoke-CachedARI-Patched {
             }
         }
         
-        # Advisory data is NOT loaded from cache - it will be collected via API call instead
+        # Advisory data: try cache first, otherwise fall back to API call
         # Handle both switch parameter and boolean value
         $skipAdvisoryValue = if ($SkipAdvisory -is [switch]) { $SkipAdvisory.IsPresent } else { $SkipAdvisory -eq $true }
         if (-not $skipAdvisoryValue) {
-            Write-Host "[UseExistingCache] Advisory cache file not found - will collect via API call" -ForegroundColor Gray
+            $advisoryLoaded = $false
+            $advisorySource = $null
+            $advisoryCachePathToLoad = $null
+            if (Test-Path $advisoryCacheFile) {
+                $advisoryCachePathToLoad = $advisoryCacheFile
+                $advisorySource = "Advisory.json"
+            } elseif (Test-Path $advisoryRawCacheFile) {
+                $advisoryCachePathToLoad = $advisoryRawCacheFile
+                $advisorySource = "AdvisoryRaw.json"
+            }
+
+            if ($advisoryCachePathToLoad) {
+                try {
+                    $Advisories = Get-Content $advisoryCachePathToLoad -Raw | ConvertFrom-Json
+                    # Ensure array for safe Count access
+                    if ($null -eq $Advisories) {
+                        $Advisories = @()
+                    } elseif ($Advisories -isnot [System.Array]) {
+                        $Advisories = @($Advisories)
+                    }
+                    $AdvisoryCount = if ($Advisories -is [System.Array]) { $Advisories.Count } else { 0 }
+                    Write-Host "[UseExistingCache] Loaded Advisory data from cache ($advisorySource, $AdvisoryCount recommendation(s))" -ForegroundColor Green
+                    $advisoryLoaded = $true
+                } catch {
+                    Write-Host "[UseExistingCache] Warning: Failed to load Advisory cache file ($advisorySource): $_" -ForegroundColor Yellow
+                    $Advisories = @()
+                    $AdvisoryCount = 0
+                }
+            }
+
+            if (-not $advisoryLoaded) {
+                Write-Host "[UseExistingCache] Advisory cache file not found - will collect via API call" -ForegroundColor Gray
+            }
         }
         
         # Policy and Advisor data will be collected below if authentication is available AND cache files don't exist
