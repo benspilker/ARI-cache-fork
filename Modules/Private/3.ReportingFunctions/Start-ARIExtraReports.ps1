@@ -458,10 +458,16 @@ function Start-ARIExtraReports {
                 }
                 
                 # If Policy job returned null and we have raw Policy data, process it directly
-                if ($null -eq $Pol -and $hasRawPolicyData -and $null -ne $policyCacheFile -and (Test-Path $policyCacheFile)) {
+                if ($null -eq $Pol -and $hasRawPolicyData) {
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Policy job returned null - processing raw Policy data directly from cache')
                     try {
-                        $policyCacheData = Get-Content $policyCacheFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+                        if ($null -eq $policyCacheData) {
+                            if ($null -ne $policyCacheFile -and (Test-Path $policyCacheFile)) {
+                                $policyCacheData = Get-Content $policyCacheFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+                            } else {
+                                throw "Policy cache data not available (Policy.json missing and split data not loaded)"
+                            }
+                        }
                         if ($policyCacheData.PSObject.Properties['PolicyAssign'] -or $policyCacheData.PSObject.Properties['PolicyDef']) {
                             # Get Subscriptions from script scope or parameter
                             $SubsForPolicy = $null
@@ -498,7 +504,9 @@ function Start-ARIExtraReports {
                             if (-not $useLitePolicyDefs) {
                                 # Merge PolicyDef/PolicySetDef from PolicyBatch.json if it exists (batch data has better metadata)
                                 # Collect from ALL batch PolicyBatch.json files and merged PolicyBatch.json
-                                $reportCacheDir = Split-Path $policyCacheFile -Parent
+                            if ($null -eq $reportCacheDir -or $reportCacheDir -eq '') {
+                                $reportCacheDir = if ($null -ne $policyCacheFile) { Split-Path $policyCacheFile -Parent } else { $reportCacheDir }
+                            }
                                 $batchPolicyDefs = @()
                                 $batchPolicySetDefs = @()
                                 $batchesProcessed = 0
