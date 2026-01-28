@@ -157,6 +157,7 @@ function Build-ARIExcelChart {
                     if ($dl) {
                         if ($dl.PSObject.Properties.Name -contains 'ShowCategory') { $dl.ShowCategory = $true }
                         if ($dl.PSObject.Properties.Name -contains 'ShowCategoryName') { $dl.ShowCategoryName = $true }
+                        if ($dl.PSObject.Properties.Name -contains 'ShowPercent') { $dl.ShowPercent = $true }
                     }
                 }
             }
@@ -506,7 +507,6 @@ function Build-ARIExcelChart {
             PivotFilter             = 'Policy Type'
             ChartTitle              = 'Policies by Category'
             ShowPercent             = $true
-            ShowCategory            = $true
             ChartHeight             = 255
             ChartWidth              = 315
             ChartRowOffSetPixels    = 5
@@ -918,6 +918,7 @@ function Build-ARIExcelChart {
             ChartTitle              = 'VMs by OS'
             PivotFilter             = 'Location'
             ShowPercent             = $true
+            ShowCategory            = $true
             ChartHeight             = 255
             ChartWidth              = 315
             ChartRowOffSetPixels    = 5

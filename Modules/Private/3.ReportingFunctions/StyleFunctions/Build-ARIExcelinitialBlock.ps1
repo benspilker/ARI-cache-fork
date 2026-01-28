@@ -130,15 +130,17 @@ function Build-ARIInitialBlock {
     # Data Gathering Time and Data Processing Time removed per user request
     # These values were showing "0 Seconds" and are not needed
 
-    $txt = $Draw.RichText.Add('Data Reporting Time: ')
-    $txt.Size = 11
-    $txt.ComplexFont = $Font
-    $txt.LatinFont = $Font
+    if ($ReportTime -and ($ReportTime -notmatch '^\s*0\s*Seconds?\s*$')) {
+        $txt = $Draw.RichText.Add('Data Reporting Time: ')
+        $txt.Size = 11
+        $txt.ComplexFont = $Font
+        $txt.LatinFont = $Font
 
-    $txt = $Draw.RichText.Add($ReportTime + "`n")
-    $txt.Size = 12
-    $txt.ComplexFont = $Font
-    $txt.LatinFont = $Font
+        $txt = $Draw.RichText.Add($ReportTime + "`n")
+        $txt.Size = 12
+        $txt.ComplexFont = $Font
+        $txt.LatinFont = $Font
+    }
 
     $txt = $Draw.RichText.Add('User Session: ')
     $txt.Size = 11
