@@ -155,6 +155,9 @@ function Start-ARIExtraReports {
         if ($null -eq $policyCacheFile) {
             try {
                 $reportCacheVar = Get-Variable -Name 'ReportCache' -Scope 'Script' -ErrorAction SilentlyContinue
+                if ($null -eq $reportCacheVar) {
+                    $reportCacheVar = Get-Variable -Name 'ReportCache' -Scope 'Global' -ErrorAction SilentlyContinue
+                }
                 if ($null -ne $reportCacheVar -and $null -ne $reportCacheVar.Value) {
                     $reportCachePath = $reportCacheVar.Value
                     $policyPath = Join-Path $reportCachePath "Policy.json"
@@ -174,6 +177,9 @@ function Start-ARIExtraReports {
         } else {
             try {
                 $reportCacheVar = Get-Variable -Name 'ReportCache' -Scope 'Script' -ErrorAction SilentlyContinue
+                if ($null -eq $reportCacheVar) {
+                    $reportCacheVar = Get-Variable -Name 'ReportCache' -Scope 'Global' -ErrorAction SilentlyContinue
+                }
                 if ($null -ne $reportCacheVar -and $null -ne $reportCacheVar.Value) {
                     $reportCacheDir = $reportCacheVar.Value
                 }
