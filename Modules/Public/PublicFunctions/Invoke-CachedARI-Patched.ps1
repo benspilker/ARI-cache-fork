@@ -1788,11 +1788,11 @@ Function Invoke-CachedARI-Patched {
                                         $HTML = New-Object -Com 'HTMLFile'
                                         $HTML.write([ref]$outage.properties.description)
                                         $OutageDescription = $Html.body.innerText
-                                        $SplitDescription = $OutageDescription.split('How can we make our incident communications more useful?').split('How can customers make incidents like this less impactful?').split('How are we making incidents like this less likely or less impactful?').split('How did we respond?').split('What went wrong and why?').split('What happened?')
                                     } catch {
                                         $OutageDescription = $outage.properties.description
-                                        $SplitDescription = @('', $OutageDescription, '', '', '', '', '')
                                     }
+                                    $OutageDescription = Convert-PlainTextFromHtml $OutageDescription
+                                    $SplitDescription = $OutageDescription.split('How can we make our incident communications more useful?').split('How can customers make incidents like this less impactful?').split('How are we making incidents like this less likely or less impactful?').split('How did we respond?').split('What went wrong and why?').split('What happened?')
                                     
                                     # Safely extract split description sections
                                     $whatHappened = ''

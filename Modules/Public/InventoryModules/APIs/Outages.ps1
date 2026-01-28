@@ -93,13 +93,13 @@ If ($Task -eq 'Processing') {
                             $HTML = New-Object -Com 'HTMLFile'
                             $HTML.write([ref]$1.properties.description)
                             $OutageDescription = $Html.body.innerText
-                            # Split description into sections
-                            $SplitDescription = $OutageDescription.split('How can we make our incident communications more useful?').split('How can customers make incidents like this less impactful?').split('How are we making incidents like this less likely or less impactful?').split('How did we respond?').split('What went wrong and why?').split('What happened?')
                         } catch {
                             # If HTML parsing fails, use raw description
                             $OutageDescription = $1.properties.description
-                            $SplitDescription = @('', $OutageDescription, '', '', '', '', '')
                         }
+                        $OutageDescription = Convert-PlainTextFromHtml $OutageDescription
+                        # Split description into sections
+                        $SplitDescription = $OutageDescription.split('How can we make our incident communications more useful?').split('How can customers make incidents like this less impactful?').split('How are we making incidents like this less likely or less impactful?').split('How did we respond?').split('What went wrong and why?').split('What happened?')
                         
                         # Safely extract split description sections with bounds checking
                         $whatHappened = ''
@@ -110,23 +110,53 @@ If ($Task -eq 'Processing') {
                         
                         if ($SplitDescription.Count -gt 1 -and $null -ne $SplitDescription[1]) {
                             $whatHappenedLines = $SplitDescription[1].Split([Environment]::NewLine)
-                            if ($whatHappenedLines.Count -gt 1) { $whatHappened = $whatHappenedLines[1] }
+                            if ($whatHappenedLines.Count -gt 0) {
+                                $whatHappened = if ($whatHappenedLines.Count -gt 1 -and [string]::IsNullOrWhiteSpace($whatHappenedLines[0])) {
+                                    $whatHappenedLines[1]
+                                } else {
+                                    $whatHappenedLines[0]
+                                }
+                            }
                         }
                         if ($SplitDescription.Count -gt 2 -and $null -ne $SplitDescription[2]) {
                             $whatWentWrongLines = $SplitDescription[2].Split([Environment]::NewLine)
-                            if ($whatWentWrongLines.Count -gt 1) { $whatWentWrong = $whatWentWrongLines[1] }
+                            if ($whatWentWrongLines.Count -gt 0) {
+                                $whatWentWrong = if ($whatWentWrongLines.Count -gt 1 -and [string]::IsNullOrWhiteSpace($whatWentWrongLines[0])) {
+                                    $whatWentWrongLines[1]
+                                } else {
+                                    $whatWentWrongLines[0]
+                                }
+                            }
                         }
                         if ($SplitDescription.Count -gt 3 -and $null -ne $SplitDescription[3]) {
                             $howDidWeRespondLines = $SplitDescription[3].Split([Environment]::NewLine)
-                            if ($howDidWeRespondLines.Count -gt 1) { $howDidWeRespond = $howDidWeRespondLines[1] }
+                            if ($howDidWeRespondLines.Count -gt 0) {
+                                $howDidWeRespond = if ($howDidWeRespondLines.Count -gt 1 -and [string]::IsNullOrWhiteSpace($howDidWeRespondLines[0])) {
+                                    $howDidWeRespondLines[1]
+                                } else {
+                                    $howDidWeRespondLines[0]
+                                }
+                            }
                         }
                         if ($SplitDescription.Count -gt 4 -and $null -ne $SplitDescription[4]) {
                             $howMakingLessLikelyLines = $SplitDescription[4].Split([Environment]::NewLine)
-                            if ($howMakingLessLikelyLines.Count -gt 1) { $howMakingLessLikely = $howMakingLessLikelyLines[1] }
+                            if ($howMakingLessLikelyLines.Count -gt 0) {
+                                $howMakingLessLikely = if ($howMakingLessLikelyLines.Count -gt 1 -and [string]::IsNullOrWhiteSpace($howMakingLessLikelyLines[0])) {
+                                    $howMakingLessLikelyLines[1]
+                                } else {
+                                    $howMakingLessLikelyLines[0]
+                                }
+                            }
                         }
                         if ($SplitDescription.Count -gt 5 -and $null -ne $SplitDescription[5]) {
                             $howCustomersCanMakeLessImpactfulLines = $SplitDescription[5].Split([Environment]::NewLine)
-                            if ($howCustomersCanMakeLessImpactfulLines.Count -gt 1) { $howCustomersCanMakeLessImpactful = $howCustomersCanMakeLessImpactfulLines[1] }
+                            if ($howCustomersCanMakeLessImpactfulLines.Count -gt 0) {
+                                $howCustomersCanMakeLessImpactful = if ($howCustomersCanMakeLessImpactfulLines.Count -gt 1 -and [string]::IsNullOrWhiteSpace($howCustomersCanMakeLessImpactfulLines[0])) {
+                                    $howCustomersCanMakeLessImpactfulLines[1]
+                                } else {
+                                    $howCustomersCanMakeLessImpactfulLines[0]
+                                }
+                            }
                         }
 
                         $whatHappened = Convert-PlainTextFromHtml $whatHappened
