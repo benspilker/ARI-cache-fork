@@ -1772,6 +1772,15 @@ Function Invoke-CachedARI-Patched {
                                     $ImpactedService = [string]$ImpactedService
                                     $ImpactedService = if ($ImpactedService -like '* ,*') { $ImpactedService -replace ".$" } else { $ImpactedService }
                                     
+                                    function Convert-PlainTextFromHtml {
+                                        param([string]$Value)
+                                        if ([string]::IsNullOrWhiteSpace($Value)) { return $Value }
+                                        $decoded = [System.Net.WebUtility]::HtmlDecode($Value)
+                                        $stripped = $decoded -replace '<[^>]+>', ' '
+                                        $collapsed = ($stripped -replace '\s+', ' ').Trim()
+                                        return $collapsed
+                                    }
+
                                     # Safely parse HTML description
                                     $OutageDescription = ''
                                     $SplitDescription = @('', '', '', '', '', '', '')
@@ -1856,6 +1865,12 @@ Function Invoke-CachedARI-Patched {
                                             $howCustomersCanMakeLessImpactful = $howCustomersCanMakeLessImpactful -replace '<[^>]+>', '' -replace '&nbsp;', ' ' -replace '&amp;', '&' -replace '&lt;', '<' -replace '&gt;', '>' -replace '&quot;', '"' -replace '&#39;', "'"
                                         }
                                     }
+                                    
+                                    $whatHappened = Convert-PlainTextFromHtml $whatHappened
+                                    $whatWentWrong = Convert-PlainTextFromHtml $whatWentWrong
+                                    $howDidWeRespond = Convert-PlainTextFromHtml $howDidWeRespond
+                                    $howMakingLessLikely = Convert-PlainTextFromHtml $howMakingLessLikely
+                                    $howCustomersCanMakeLessImpactful = Convert-PlainTextFromHtml $howCustomersCanMakeLessImpactful
                                     
                                     $obj = [PSCustomObject]@{
                                         'Subscription' = $sub1.name

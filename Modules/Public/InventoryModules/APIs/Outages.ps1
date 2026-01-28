@@ -32,6 +32,14 @@ If ($Task -eq 'Processing') {
 
     if($Outages)
         {
+            function Convert-PlainTextFromHtml {
+                param([string]$Value)
+                if ([string]::IsNullOrWhiteSpace($Value)) { return $Value }
+                $decoded = [System.Net.WebUtility]::HtmlDecode($Value)
+                $stripped = $decoded -replace '<[^>]+>', ' '
+                $collapsed = ($stripped -replace '\s+', ' ').Trim()
+                return $collapsed
+            }
             $tmp = foreach ($1 in $Outages) {
                 # Safely extract impacted subscriptions
                 $ImpactedSubs = @()
@@ -120,6 +128,12 @@ If ($Task -eq 'Processing') {
                             $howCustomersCanMakeLessImpactfulLines = $SplitDescription[5].Split([Environment]::NewLine)
                             if ($howCustomersCanMakeLessImpactfulLines.Count -gt 1) { $howCustomersCanMakeLessImpactful = $howCustomersCanMakeLessImpactfulLines[1] }
                         }
+
+                        $whatHappened = Convert-PlainTextFromHtml $whatHappened
+                        $whatWentWrong = Convert-PlainTextFromHtml $whatWentWrong
+                        $howDidWeRespond = Convert-PlainTextFromHtml $howDidWeRespond
+                        $howMakingLessLikely = Convert-PlainTextFromHtml $howMakingLessLikely
+                        $howCustomersCanMakeLessImpactful = Convert-PlainTextFromHtml $howCustomersCanMakeLessImpactful
 
                         $obj = @{
                             'ID'                                                                  = $1.id;
