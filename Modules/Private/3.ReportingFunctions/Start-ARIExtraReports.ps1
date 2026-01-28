@@ -635,7 +635,13 @@ function Start-ARIExtraReports {
                         }
                         
                         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Calling Start-ARIPolicyJob directly with ' + $SubsForPolicy.Count + ' subscription(s)')
-                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'PolicyAssign structure: ' + ($PolicyAssignRaw.GetType().Name) + ', PolicyDef count: ' + $PolicyDefRaw.Count + ', PolicySetDef count: ' + $PolicySetDefRaw.Count)
+                        $policyAssignType = $null
+                        try {
+                            $policyAssignType = $PolicyAssignRaw.PSObject.TypeNames | Select-Object -First 1
+                        } catch {
+                            $policyAssignType = 'UnknownType'
+                        }
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'PolicyAssign structure: ' + $policyAssignType + ', PolicyDef count: ' + $PolicyDefRaw.Count + ', PolicySetDef count: ' + $PolicySetDefRaw.Count)
                         try {
                             $Pol = Start-ARIPolicyJob -Subscriptions $SubsForPolicy -PolicySetDef $PolicySetDefRaw -PolicyAssign $PolicyAssignRaw -PolicyDef $PolicyDefRaw
                             if ($null -eq $Pol) {
