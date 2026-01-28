@@ -490,6 +490,7 @@ function Build-ARIExcelChart {
             PivotFilter             = 'Policy Type'
             ChartTitle              = 'Policies by Category'
             ShowPercent             = $true
+            ShowCategory            = $true
             ChartHeight             = 255
             ChartWidth              = 315
             ChartRowOffSetPixels    = 5
