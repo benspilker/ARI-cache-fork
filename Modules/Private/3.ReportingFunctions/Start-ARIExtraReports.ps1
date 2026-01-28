@@ -202,12 +202,33 @@ function Start-ARIExtraReports {
         }
         
         $hasRawPolicyData = $false
+        $useLitePolicyDefs = $false
+        $policyCacheData = $null
         # Prefer split policy files if present (low-memory loading)
         if ($null -ne $reportCacheDir -and (Test-Path $reportCacheDir)) {
             $splitAssignPath = Join-Path $reportCacheDir "PolicyAssign.json"
+            $splitDefLitePath = Join-Path $reportCacheDir "PolicyDefLite.json"
+            $splitSetDefLitePath = Join-Path $reportCacheDir "PolicySetDefLite.json"
             $splitDefPath = Join-Path $reportCacheDir "PolicyDef.json"
             $splitSetDefPath = Join-Path $reportCacheDir "PolicySetDef.json"
-            if ((Test-Path $splitAssignPath) -or (Test-Path $splitDefPath) -or (Test-Path $splitSetDefPath)) {
+            if ((Test-Path $splitAssignPath) -or (Test-Path $splitDefLitePath) -or (Test-Path $splitSetDefLitePath)) {
+                try {
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found split PolicyAssign + Lite PolicyDef/PolicySetDef files - loading raw policy data')
+                    $splitPolicyAssign = if (Test-Path $splitAssignPath) { Get-Content $splitAssignPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } else { @{ policyAssignments = @() } }
+                    $splitPolicyDef = if (Test-Path $splitDefLitePath) { Get-Content $splitDefLitePath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } else { @() }
+                    $splitPolicySetDef = if (Test-Path $splitSetDefLitePath) { Get-Content $splitSetDefLitePath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } else { @() }
+                    $policyCacheData = [PSCustomObject]@{
+                        PolicyAssign = $splitPolicyAssign
+                        PolicyDef = $splitPolicyDef
+                        PolicySetDef = $splitPolicySetDef
+                    }
+                    $hasRawPolicyData = $true
+                    $useLitePolicyDefs = $true
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Loaded split PolicyAssign + Lite PolicyDef/PolicySetDef for Policy job processing')
+                } catch {
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error loading split policy lite files: ' + $_.Exception.Message)
+                }
+            } elseif ((Test-Path $splitAssignPath) -or (Test-Path $splitDefPath) -or (Test-Path $splitSetDefPath)) {
                 try {
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found split Policy*.json files - loading raw policy data')
                     $splitPolicyAssign = if (Test-Path $splitAssignPath) { Get-Content $splitAssignPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } else { @{ policyAssignments = @() } }
@@ -474,103 +495,107 @@ function Start-ARIExtraReports {
                             if ($null -eq $PolicySetDefRaw) { $PolicySetDefRaw = @() }
                             elseif ($PolicySetDefRaw -isnot [System.Array]) { $PolicySetDefRaw = @($PolicySetDefRaw) }
                             
-                            # Merge PolicyDef/PolicySetDef from PolicyBatch.json if it exists (batch data has better metadata)
-                            # Collect from ALL batch PolicyBatch.json files and merged PolicyBatch.json
-                            $reportCacheDir = Split-Path $policyCacheFile -Parent
-                            $batchPolicyDefs = @()
-                            $batchPolicySetDefs = @()
-                            $batchesProcessed = 0
-                            
-                            # 1. Check merged PolicyBatch.json first (ReportCache_Merged)
-                            $mergedCacheDir = Join-Path (Split-Path $reportCacheDir -Parent) "ReportCache_Merged"
-                            $mergedPolicyBatchFile = if ($mergedCacheDir -and (Test-Path $mergedCacheDir)) { Join-Path $mergedCacheDir "PolicyBatch.json" } else { $null }
-                            if ($null -ne $mergedPolicyBatchFile -and (Test-Path $mergedPolicyBatchFile)) {
-                                try {
-                                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found merged PolicyBatch.json - loading PolicyDef/PolicySetDef')
-                                    $mergedBatchData = Get-Content $mergedPolicyBatchFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-                                    if ($mergedBatchData -is [PSCustomObject] -or $mergedBatchData -is [System.Collections.Hashtable]) {
-                                        if ($mergedBatchData.PSObject.Properties.Name -contains 'PolicyDef' -or $mergedBatchData.ContainsKey('PolicyDef')) {
-                                            $defs = if ($mergedBatchData -is [PSCustomObject]) { $mergedBatchData.PolicyDef } else { $mergedBatchData['PolicyDef'] }
-                                            if ($defs -is [System.Array]) { $batchPolicyDefs += $defs } elseif ($null -ne $defs) { $batchPolicyDefs += @($defs) }
-                                        }
-                                        if ($mergedBatchData.PSObject.Properties.Name -contains 'PolicySetDef' -or $mergedBatchData.ContainsKey('PolicySetDef')) {
-                                            $setDefs = if ($mergedBatchData -is [PSCustomObject]) { $mergedBatchData.PolicySetDef } else { $mergedBatchData['PolicySetDef'] }
-                                            if ($setDefs -is [System.Array]) { $batchPolicySetDefs += $setDefs } elseif ($null -ne $setDefs) { $batchPolicySetDefs += @($setDefs) }
-                                        }
-                                        $batchesProcessed++
-                                    }
-                                } catch {
-                                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Warning: Failed to load merged PolicyBatch.json: ' + $_.Exception.Message)
-                                }
-                            }
-                            
-                            # 2. Check batch directories (ReportCache_Batch*) - collect from ALL batches
-                            $batchDirs = Get-ChildItem -Path (Split-Path $reportCacheDir -Parent) -Directory -Filter "ReportCache_Batch*" -ErrorAction SilentlyContinue
-                            foreach ($batchDir in $batchDirs) {
-                                $batchPolicyBatchFile = Join-Path $batchDir.FullName "PolicyBatch.json"
-                                if (Test-Path $batchPolicyBatchFile) {
+                            if (-not $useLitePolicyDefs) {
+                                # Merge PolicyDef/PolicySetDef from PolicyBatch.json if it exists (batch data has better metadata)
+                                # Collect from ALL batch PolicyBatch.json files and merged PolicyBatch.json
+                                $reportCacheDir = Split-Path $policyCacheFile -Parent
+                                $batchPolicyDefs = @()
+                                $batchPolicySetDefs = @()
+                                $batchesProcessed = 0
+                                
+                                # 1. Check merged PolicyBatch.json first (ReportCache_Merged)
+                                $mergedCacheDir = Join-Path (Split-Path $reportCacheDir -Parent) "ReportCache_Merged"
+                                $mergedPolicyBatchFile = if ($mergedCacheDir -and (Test-Path $mergedCacheDir)) { Join-Path $mergedCacheDir "PolicyBatch.json" } else { $null }
+                                if ($null -ne $mergedPolicyBatchFile -and (Test-Path $mergedPolicyBatchFile)) {
                                     try {
-                                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found PolicyBatch.json in ' + $batchDir.Name + ' - loading PolicyDef/PolicySetDef')
-                                        $batchData = Get-Content $batchPolicyBatchFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-                                        if ($batchData -is [PSCustomObject] -or $batchData -is [System.Collections.Hashtable]) {
-                                            if ($batchData.PSObject.Properties.Name -contains 'PolicyDef' -or $batchData.ContainsKey('PolicyDef')) {
-                                                $defs = if ($batchData -is [PSCustomObject]) { $batchData.PolicyDef } else { $batchData['PolicyDef'] }
+                                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found merged PolicyBatch.json - loading PolicyDef/PolicySetDef')
+                                        $mergedBatchData = Get-Content $mergedPolicyBatchFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+                                        if ($mergedBatchData -is [PSCustomObject] -or $mergedBatchData -is [System.Collections.Hashtable]) {
+                                            if ($mergedBatchData.PSObject.Properties.Name -contains 'PolicyDef' -or $mergedBatchData.ContainsKey('PolicyDef')) {
+                                                $defs = if ($mergedBatchData -is [PSCustomObject]) { $mergedBatchData.PolicyDef } else { $mergedBatchData['PolicyDef'] }
                                                 if ($defs -is [System.Array]) { $batchPolicyDefs += $defs } elseif ($null -ne $defs) { $batchPolicyDefs += @($defs) }
                                             }
-                                            if ($batchData.PSObject.Properties.Name -contains 'PolicySetDef' -or $batchData.ContainsKey('PolicySetDef')) {
-                                                $setDefs = if ($batchData -is [PSCustomObject]) { $batchData.PolicySetDef } else { $batchData['PolicySetDef'] }
+                                            if ($mergedBatchData.PSObject.Properties.Name -contains 'PolicySetDef' -or $mergedBatchData.ContainsKey('PolicySetDef')) {
+                                                $setDefs = if ($mergedBatchData -is [PSCustomObject]) { $mergedBatchData.PolicySetDef } else { $mergedBatchData['PolicySetDef'] }
                                                 if ($setDefs -is [System.Array]) { $batchPolicySetDefs += $setDefs } elseif ($null -ne $setDefs) { $batchPolicySetDefs += @($setDefs) }
                                             }
                                             $batchesProcessed++
                                         }
                                     } catch {
-                                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Warning: Failed to load PolicyBatch.json from ' + $batchDir.Name + ': ' + $_.Exception.Message)
+                                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Warning: Failed to load merged PolicyBatch.json: ' + $_.Exception.Message)
                                     }
                                 }
-                            }
-                            
-                            # 3. Check same directory as Policy.json (fallback)
-                            $sameDirPolicyBatchFile = Join-Path $reportCacheDir "PolicyBatch.json"
-                            if ($batchesProcessed -eq 0 -and (Test-Path $sameDirPolicyBatchFile)) {
-                                try {
-                                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found PolicyBatch.json in same directory as Policy.json - loading PolicyDef/PolicySetDef')
-                                    $sameDirBatchData = Get-Content $sameDirPolicyBatchFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
-                                    if ($sameDirBatchData -is [PSCustomObject] -or $sameDirBatchData -is [System.Collections.Hashtable]) {
-                                        if ($sameDirBatchData.PSObject.Properties.Name -contains 'PolicyDef' -or $sameDirBatchData.ContainsKey('PolicyDef')) {
-                                            $defs = if ($sameDirBatchData -is [PSCustomObject]) { $sameDirBatchData.PolicyDef } else { $sameDirBatchData['PolicyDef'] }
-                                            if ($defs -is [System.Array]) { $batchPolicyDefs += $defs } elseif ($null -ne $defs) { $batchPolicyDefs += @($defs) }
-                                        }
-                                        if ($sameDirBatchData.PSObject.Properties.Name -contains 'PolicySetDef' -or $sameDirBatchData.ContainsKey('PolicySetDef')) {
-                                            $setDefs = if ($sameDirBatchData -is [PSCustomObject]) { $sameDirBatchData.PolicySetDef } else { $sameDirBatchData['PolicySetDef'] }
-                                            if ($setDefs -is [System.Array]) { $batchPolicySetDefs += $setDefs } elseif ($null -ne $setDefs) { $batchPolicySetDefs += @($setDefs) }
-                                        }
-                                        $batchesProcessed++
-                                    }
-                                } catch {
-                                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Warning: Failed to load PolicyBatch.json from same directory: ' + $_.Exception.Message)
-                                }
-                            }
-                            
-                            # Merge: Add batch data first (takes precedence), then early collection data, then deduplicate by ID
-                            if ($batchesProcessed -gt 0) {
-                                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found PolicyBatch.json files - merging PolicyDef/PolicySetDef with Policy.json data (processed ' + $batchesProcessed + ' batch file(s))')
                                 
-                                # Deduplicate batch PolicyDefs/PolicySetDefs by ID first
-                                $batchPolicyDefs = $batchPolicyDefs | Sort-Object -Property id -Unique
-                                $batchPolicySetDefs = $batchPolicySetDefs | Sort-Object -Property id -Unique
+                                # 2. Check batch directories (ReportCache_Batch*) - collect from ALL batches
+                                $batchDirs = Get-ChildItem -Path (Split-Path $reportCacheDir -Parent) -Directory -Filter "ReportCache_Batch*" -ErrorAction SilentlyContinue
+                                foreach ($batchDir in $batchDirs) {
+                                    $batchPolicyBatchFile = Join-Path $batchDir.FullName "PolicyBatch.json"
+                                    if (Test-Path $batchPolicyBatchFile) {
+                                        try {
+                                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found PolicyBatch.json in ' + $batchDir.Name + ' - loading PolicyDef/PolicySetDef')
+                                            $batchData = Get-Content $batchPolicyBatchFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+                                            if ($batchData -is [PSCustomObject] -or $batchData -is [System.Collections.Hashtable]) {
+                                                if ($batchData.PSObject.Properties.Name -contains 'PolicyDef' -or $batchData.ContainsKey('PolicyDef')) {
+                                                    $defs = if ($batchData -is [PSCustomObject]) { $batchData.PolicyDef } else { $batchData['PolicyDef'] }
+                                                    if ($defs -is [System.Array]) { $batchPolicyDefs += $defs } elseif ($null -ne $defs) { $batchPolicyDefs += @($defs) }
+                                                }
+                                                if ($batchData.PSObject.Properties.Name -contains 'PolicySetDef' -or $batchData.ContainsKey('PolicySetDef')) {
+                                                    $setDefs = if ($batchData -is [PSCustomObject]) { $batchData.PolicySetDef } else { $batchData['PolicySetDef'] }
+                                                    if ($setDefs -is [System.Array]) { $batchPolicySetDefs += $setDefs } elseif ($null -ne $setDefs) { $batchPolicySetDefs += @($setDefs) }
+                                                }
+                                                $batchesProcessed++
+                                            }
+                                        } catch {
+                                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Warning: Failed to load PolicyBatch.json from ' + $batchDir.Name + ': ' + $_.Exception.Message)
+                                        }
+                                    }
+                                }
+                                
+                                # 3. Check same directory as Policy.json (fallback)
+                                $sameDirPolicyBatchFile = Join-Path $reportCacheDir "PolicyBatch.json"
+                                if ($batchesProcessed -eq 0 -and (Test-Path $sameDirPolicyBatchFile)) {
+                                    try {
+                                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found PolicyBatch.json in same directory as Policy.json - loading PolicyDef/PolicySetDef')
+                                        $sameDirBatchData = Get-Content $sameDirPolicyBatchFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+                                        if ($sameDirBatchData -is [PSCustomObject] -or $sameDirBatchData -is [System.Collections.Hashtable]) {
+                                            if ($sameDirBatchData.PSObject.Properties.Name -contains 'PolicyDef' -or $sameDirBatchData.ContainsKey('PolicyDef')) {
+                                                $defs = if ($sameDirBatchData -is [PSCustomObject]) { $sameDirBatchData.PolicyDef } else { $sameDirBatchData['PolicyDef'] }
+                                                if ($defs -is [System.Array]) { $batchPolicyDefs += $defs } elseif ($null -ne $defs) { $batchPolicyDefs += @($defs) }
+                                            }
+                                            if ($sameDirBatchData.PSObject.Properties.Name -contains 'PolicySetDef' -or $sameDirBatchData.ContainsKey('PolicySetDef')) {
+                                                $setDefs = if ($sameDirBatchData -is [PSCustomObject]) { $sameDirBatchData.PolicySetDef } else { $sameDirBatchData['PolicySetDef'] }
+                                                if ($setDefs -is [System.Array]) { $batchPolicySetDefs += $setDefs } elseif ($null -ne $setDefs) { $batchPolicySetDefs += @($setDefs) }
+                                            }
+                                            $batchesProcessed++
+                                        }
+                                    } catch {
+                                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Warning: Failed to load PolicyBatch.json from same directory: ' + $_.Exception.Message)
+                                    }
+                                }
                                 
                                 # Merge: Add batch data first (takes precedence), then early collection data, then deduplicate by ID
-                                $allPolicyDefs = @()
-                                $allPolicyDefs += $batchPolicyDefs  # Batch data first (preferred)
-                                $allPolicyDefs += $PolicyDefRaw     # Then early collection data
-                                $PolicyDefRaw = $allPolicyDefs | Sort-Object -Property id -Unique
-                                
-                                $allPolicySetDefs = @()
-                                $allPolicySetDefs += $batchPolicySetDefs  # Batch data first (preferred)
-                                $allPolicySetDefs += $PolicySetDefRaw     # Then early collection data
-                                $PolicySetDefRaw = $allPolicySetDefs | Sort-Object -Property id -Unique
-                                
-                                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Merged PolicyDef/PolicySetDef: PolicyDef=' + $PolicyDefRaw.Count + ' (batch: ' + $batchPolicyDefs.Count + ' unique), PolicySetDef=' + $PolicySetDefRaw.Count + ' (batch: ' + $batchPolicySetDefs.Count + ' unique)')
+                                if ($batchesProcessed -gt 0) {
+                                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found PolicyBatch.json files - merging PolicyDef/PolicySetDef with Policy.json data (processed ' + $batchesProcessed + ' batch file(s))')
+                                    
+                                    # Deduplicate batch PolicyDefs/PolicySetDefs by ID first
+                                    $batchPolicyDefs = $batchPolicyDefs | Sort-Object -Property id -Unique
+                                    $batchPolicySetDefs = $batchPolicySetDefs | Sort-Object -Property id -Unique
+                                    
+                                    # Merge: Add batch data first (takes precedence), then early collection data, then deduplicate by ID
+                                    $allPolicyDefs = @()
+                                    $allPolicyDefs += $batchPolicyDefs  # Batch data first (preferred)
+                                    $allPolicyDefs += $PolicyDefRaw     # Then early collection data
+                                    $PolicyDefRaw = $allPolicyDefs | Sort-Object -Property id -Unique
+                                    
+                                    $allPolicySetDefs = @()
+                                    $allPolicySetDefs += $batchPolicySetDefs  # Batch data first (preferred)
+                                    $allPolicySetDefs += $PolicySetDefRaw     # Then early collection data
+                                    $PolicySetDefRaw = $allPolicySetDefs | Sort-Object -Property id -Unique
+                                    
+                                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Merged PolicyDef/PolicySetDef: PolicyDef=' + $PolicyDefRaw.Count + ' (batch: ' + $batchPolicyDefs.Count + ' unique), PolicySetDef=' + $PolicySetDefRaw.Count + ' (batch: ' + $batchPolicySetDefs.Count + ' unique)')
+                                }
+                            } else {
+                                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Using Lite PolicyDef/PolicySetDef - skipping PolicyBatch.json merge to avoid OOM')
                             }
                             
                             # Handle PolicyAssign structure - it may be an array or an object with policyAssignments property
