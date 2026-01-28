@@ -146,6 +146,22 @@ function Build-ARIExcelChart {
             $PTParams['SourceRange'] = $sourceRange
         }
         Add-PivotTable @PTParams
+        # Ensure pie labels show OS category names (Windows/Linux)
+        try {
+            $vmOsChart = $excel.Overview.Drawings | Where-Object {
+                (($_.Title -and $_.Title.Text -eq 'VMs by OS') -or ($_.Name -eq 'P7'))
+            } | Select-Object -First 1
+            if ($vmOsChart -and $vmOsChart.Series) {
+                foreach ($series in $vmOsChart.Series) {
+                    $dl = $series.DataLabel
+                    if ($dl) {
+                        if ($dl.PSObject.Properties.Name -contains 'ShowCategory') { $dl.ShowCategory = $true }
+                        if ($dl.PSObject.Properties.Name -contains 'ShowCategoryName') { $dl.ShowCategoryName = $true }
+                    }
+                }
+            }
+        } catch {
+        }
     }
     else
         {
