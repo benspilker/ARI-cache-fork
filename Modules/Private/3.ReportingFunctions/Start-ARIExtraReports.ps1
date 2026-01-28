@@ -468,40 +468,49 @@ function Start-ARIExtraReports {
                                 throw "Policy cache data not available (Policy.json missing and split data not loaded)"
                             }
                         }
-                        if ($policyCacheData.PSObject.Properties['PolicyAssign'] -or $policyCacheData.PSObject.Properties['PolicyDef']) {
-                            # Get Subscriptions from script scope or parameter
-                            $SubsForPolicy = $null
-                            try {
-                                $subsVar = Get-Variable -Name 'Subscriptions' -Scope 'Script' -ErrorAction SilentlyContinue
-                                if ($null -ne $subsVar) {
-                                    $SubsForPolicy = $subsVar.Value
-                                }
-                            } catch {
-                                # Try to get from function parameter
-                                if ($null -ne $Subscriptions) {
-                                    $SubsForPolicy = $Subscriptions
-                                }
+                        # Get Subscriptions from script scope or parameter
+                        $SubsForPolicy = $null
+                        try {
+                            $subsVar = Get-Variable -Name 'Subscriptions' -Scope 'Script' -ErrorAction SilentlyContinue
+                            if ($null -ne $subsVar) {
+                                $SubsForPolicy = $subsVar.Value
                             }
-                            
-                            # Ensure Subscriptions is an array
-                            if ($null -eq $SubsForPolicy) {
-                                $SubsForPolicy = @()
-                            } elseif ($SubsForPolicy -isnot [System.Array]) {
-                                $SubsForPolicy = @($SubsForPolicy)
+                        } catch {
+                            # Try to get from function parameter
+                            if ($null -ne $Subscriptions) {
+                                $SubsForPolicy = $Subscriptions
                             }
-                            
-                            # Extract raw Policy data
-                            $PolicyAssignRaw = if ($policyCacheData.PSObject.Properties['PolicyAssign']) { $policyCacheData.PolicyAssign } else { @{ policyAssignments = @() } }
-                            $PolicyDefRaw = if ($policyCacheData.PSObject.Properties['PolicyDef']) { $policyCacheData.PolicyDef } else { @() }
-                            $PolicySetDefRaw = if ($policyCacheData.PSObject.Properties['PolicySetDef']) { $policyCacheData.PolicySetDef } else { @() }
-                            
-                            # Ensure arrays
-                            if ($null -eq $PolicyDefRaw) { $PolicyDefRaw = @() }
-                            elseif ($PolicyDefRaw -isnot [System.Array]) { $PolicyDefRaw = @($PolicyDefRaw) }
-                            if ($null -eq $PolicySetDefRaw) { $PolicySetDefRaw = @() }
-                            elseif ($PolicySetDefRaw -isnot [System.Array]) { $PolicySetDefRaw = @($PolicySetDefRaw) }
-                            
-                            if (-not $useLitePolicyDefs) {
+                        }
+                        
+                        # Ensure Subscriptions is an array
+                        if ($null -eq $SubsForPolicy) {
+                            $SubsForPolicy = @()
+                        } elseif ($SubsForPolicy -isnot [System.Array]) {
+                            $SubsForPolicy = @($SubsForPolicy)
+                        }
+                        
+                        # Extract raw Policy data (safe defaults if properties missing)
+                        if (-not $policyCacheData.PSObject.Properties['PolicyAssign']) {
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Warning: PolicyAssign missing in policy cache data - using empty assignments')
+                        }
+                        if (-not $policyCacheData.PSObject.Properties['PolicyDef']) {
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Warning: PolicyDef missing in policy cache data - using empty definitions')
+                        }
+                        if (-not $policyCacheData.PSObject.Properties['PolicySetDef']) {
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Warning: PolicySetDef missing in policy cache data - using empty set definitions')
+                        }
+                        
+                        $PolicyAssignRaw = if ($policyCacheData.PSObject.Properties['PolicyAssign']) { $policyCacheData.PolicyAssign } else { @{ policyAssignments = @() } }
+                        $PolicyDefRaw = if ($policyCacheData.PSObject.Properties['PolicyDef']) { $policyCacheData.PolicyDef } else { @() }
+                        $PolicySetDefRaw = if ($policyCacheData.PSObject.Properties['PolicySetDef']) { $policyCacheData.PolicySetDef } else { @() }
+                        
+                        # Ensure arrays
+                        if ($null -eq $PolicyDefRaw) { $PolicyDefRaw = @() }
+                        elseif ($PolicyDefRaw -isnot [System.Array]) { $PolicyDefRaw = @($PolicyDefRaw) }
+                        if ($null -eq $PolicySetDefRaw) { $PolicySetDefRaw = @() }
+                        elseif ($PolicySetDefRaw -isnot [System.Array]) { $PolicySetDefRaw = @($PolicySetDefRaw) }
+                        
+                        if (-not $useLitePolicyDefs) {
                                 # Merge PolicyDef/PolicySetDef from PolicyBatch.json if it exists (batch data has better metadata)
                                 # Collect from ALL batch PolicyBatch.json files and merged PolicyBatch.json
                             if ($null -eq $reportCacheDir -or $reportCacheDir -eq '') {
@@ -606,40 +615,39 @@ function Start-ARIExtraReports {
                                 Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Using Lite PolicyDef/PolicySetDef - skipping PolicyBatch.json merge to avoid OOM')
                             }
                             
-                            # Handle PolicyAssign structure - it may be an array or an object with policyAssignments property
-                            if ($null -ne $PolicyAssignRaw) {
-                                if ($PolicyAssignRaw -is [System.Array]) {
-                                    # Direct array - wrap in hashtable with policyAssignments property
-                                    $PolicyAssignRaw = @{ policyAssignments = $PolicyAssignRaw }
-                                } elseif ($PolicyAssignRaw -is [PSCustomObject] -or $PolicyAssignRaw -is [System.Collections.Hashtable]) {
-                                    # Already has structure, check for policyAssignments property
-                                    if (-not ($PolicyAssignRaw.policyAssignments -or $PolicyAssignRaw.ContainsKey('policyAssignments'))) {
-                                        # Convert to hashtable with policyAssignments property
-                                        $PolicyAssignRaw = @{ policyAssignments = @() }
-                                    }
-                                } else {
-                                    # Single value - wrap in hashtable
-                                    $PolicyAssignRaw = @{ policyAssignments = @($PolicyAssignRaw) }
+                        # Handle PolicyAssign structure - it may be an array or an object with policyAssignments property
+                        if ($null -ne $PolicyAssignRaw) {
+                            if ($PolicyAssignRaw -is [System.Array]) {
+                                # Direct array - wrap in hashtable with policyAssignments property
+                                $PolicyAssignRaw = @{ policyAssignments = $PolicyAssignRaw }
+                            } elseif ($PolicyAssignRaw -is [PSCustomObject] -or $PolicyAssignRaw -is [System.Collections.Hashtable]) {
+                                # Already has structure, check for policyAssignments property
+                                if (-not ($PolicyAssignRaw.policyAssignments -or $PolicyAssignRaw.ContainsKey('policyAssignments'))) {
+                                    # Convert to hashtable with policyAssignments property
+                                    $PolicyAssignRaw = @{ policyAssignments = @() }
                                 }
                             } else {
-                                $PolicyAssignRaw = @{ policyAssignments = @() }
+                                # Single value - wrap in hashtable
+                                $PolicyAssignRaw = @{ policyAssignments = @($PolicyAssignRaw) }
                             }
-                            
-                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Calling Start-ARIPolicyJob directly with ' + $SubsForPolicy.Count + ' subscription(s)')
-                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'PolicyAssign structure: ' + ($PolicyAssignRaw.GetType().Name) + ', PolicyDef count: ' + $PolicyDefRaw.Count + ', PolicySetDef count: ' + $PolicySetDefRaw.Count)
-                            try {
-                                $Pol = Start-ARIPolicyJob -Subscriptions $SubsForPolicy -PolicySetDef $PolicySetDefRaw -PolicyAssign $PolicyAssignRaw -PolicyDef $PolicyDefRaw
-                                if ($null -eq $Pol) {
-                                    $Pol = @()
-                                } elseif ($Pol -isnot [System.Array]) {
-                                    $Pol = @($Pol)
-                                }
-                                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob returned ' + $Pol.Count + ' Policy record(s)')
-                            } catch {
-                                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error calling Start-ARIPolicyJob: ' + $_.Exception.Message)
-                                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Stack trace: ' + $_.ScriptStackTrace)
+                        } else {
+                            $PolicyAssignRaw = @{ policyAssignments = @() }
+                        }
+                        
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Calling Start-ARIPolicyJob directly with ' + $SubsForPolicy.Count + ' subscription(s)')
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'PolicyAssign structure: ' + ($PolicyAssignRaw.GetType().Name) + ', PolicyDef count: ' + $PolicyDefRaw.Count + ', PolicySetDef count: ' + $PolicySetDefRaw.Count)
+                        try {
+                            $Pol = Start-ARIPolicyJob -Subscriptions $SubsForPolicy -PolicySetDef $PolicySetDefRaw -PolicyAssign $PolicyAssignRaw -PolicyDef $PolicyDefRaw
+                            if ($null -eq $Pol) {
                                 $Pol = @()
+                            } elseif ($Pol -isnot [System.Array]) {
+                                $Pol = @($Pol)
                             }
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob returned ' + $Pol.Count + ' Policy record(s)')
+                        } catch {
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error calling Start-ARIPolicyJob: ' + $_.Exception.Message)
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Stack trace: ' + $_.ScriptStackTrace)
+                            $Pol = @()
                         }
                     } catch {
                         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error processing raw Policy data directly: ' + $_.Exception.Message)
