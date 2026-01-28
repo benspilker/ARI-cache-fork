@@ -134,7 +134,7 @@ function Build-ARIExcelChart {
             PivotFilter             = 'Recommended Size'
             PivotTotals             = 'Both'
             ShowCategory            = $false
-            NoLegend                = $true
+            NoLegend                = $false
             ChartTitle              = 'Potential Net Savings (VM Reservation)'
             ShowPercent             = $true
             ChartHeight             = 400
