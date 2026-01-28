@@ -166,7 +166,26 @@ function Start-ARIExtraReports {
                 # Ignore errors accessing ReportCache variable
             }
         }
-        
+
+        # Determine ReportCache directory for split policy files
+        $reportCacheDir = $null
+        if ($null -ne $policyCacheFile) {
+            $reportCacheDir = Split-Path $policyCacheFile -Parent
+        } else {
+            try {
+                $reportCacheVar = Get-Variable -Name 'ReportCache' -Scope 'Script' -ErrorAction SilentlyContinue
+                if ($null -ne $reportCacheVar -and $null -ne $reportCacheVar.Value) {
+                    $reportCacheDir = $reportCacheVar.Value
+                }
+            } catch {
+                # Ignore errors
+            }
+            if ($null -eq $reportCacheDir) {
+                if (Test-Path ".\\ReportCache") { $reportCacheDir = ".\\ReportCache" }
+                elseif (Test-Path "./ReportCache") { $reportCacheDir = "./ReportCache" }
+            }
+        }
+
         # Check for Policy job FIRST before checking Policy.json
         # This ensures we don't miss the Policy job if it's still running
         $policyJobExists = $false
@@ -177,7 +196,30 @@ function Start-ARIExtraReports {
         }
         
         $hasRawPolicyData = $false
-        if ($null -ne $policyCacheFile -and (Test-Path $policyCacheFile)) {
+        # Prefer split policy files if present (low-memory loading)
+        if ($null -ne $reportCacheDir -and (Test-Path $reportCacheDir)) {
+            $splitAssignPath = Join-Path $reportCacheDir "PolicyAssign.json"
+            $splitDefPath = Join-Path $reportCacheDir "PolicyDef.json"
+            $splitSetDefPath = Join-Path $reportCacheDir "PolicySetDef.json"
+            if ((Test-Path $splitAssignPath) -or (Test-Path $splitDefPath) -or (Test-Path $splitSetDefPath)) {
+                try {
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found split Policy*.json files - loading raw policy data')
+                    $splitPolicyAssign = if (Test-Path $splitAssignPath) { Get-Content $splitAssignPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } else { @{ policyAssignments = @() } }
+                    $splitPolicyDef = if (Test-Path $splitDefPath) { Get-Content $splitDefPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } else { @() }
+                    $splitPolicySetDef = if (Test-Path $splitSetDefPath) { Get-Content $splitSetDefPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } else { @() }
+                    $policyCacheData = [PSCustomObject]@{
+                        PolicyAssign = $splitPolicyAssign
+                        PolicyDef = $splitPolicyDef
+                        PolicySetDef = $splitPolicySetDef
+                    }
+                    $hasRawPolicyData = $true
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Loaded split PolicyAssign/PolicyDef/PolicySetDef for Policy job processing')
+                } catch {
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error loading split policy files: ' + $_.Exception.Message)
+                }
+            }
+        }
+        if ($null -eq $policyCacheData -and $null -ne $policyCacheFile -and (Test-Path $policyCacheFile)) {
             try {
                 Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Checking Policy cache file: ' + $policyCacheFile)
                 $policyCacheData = Get-Content $policyCacheFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
