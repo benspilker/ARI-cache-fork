@@ -52,8 +52,8 @@ function Wait-ARIJob {
             $runningJobs = @($runningJobs)
         }
         
-        $jbCount = if ($null -ne $jb) { $jb.Count } else { 0 }
-        $runningCount = if ($null -ne $runningJobs) { $runningJobs.Count } else { 0 }
+        $jbCount = if ($null -ne $jb -and $jb.PSObject.Properties.Match('Count').Count -gt 0) { $jb.Count } else { 0 }
+        $runningCount = if ($null -ne $runningJobs -and $runningJobs.PSObject.Properties.Match('Count').Count -gt 0) { $runningJobs.Count } else { 0 }
         
         if ($jbCount -gt 0) {
             $c = ((($jbCount - $runningCount) / $jbCount) * 100)
