@@ -66,7 +66,7 @@ function Start-ARIExcelJob {
             }
             
             $JSONFileName = ($ModuleFolder.Name + '.json')
-            $CacheFile = $CacheFiles | Where-Object { $_.Name -like "*$JSONFileName" }
+            $CacheFile = $CacheFiles | Where-Object { $_.Name -like "*$JSONFileName" } | Select-Object -First 1
             
             # SPECIAL CASE: Outages module can use standalone Outages.json file
             # This allows clean separation from APIs.json and avoids merge conflicts
