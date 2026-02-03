@@ -22,11 +22,20 @@ function Start-ARIProcessJob {
 
     Write-Progress -activity 'Azure Inventory' -Status "22% Complete." -PercentComplete 22 -CurrentOperation "Creating Jobs to Process Data.."
 
-    # PATCHED: Limit concurrent jobs to 3 for Windmill memory constraints
-    # Original logic would use 20/8/5 jobs based on resource count
-    # This patch forces 3 concurrent jobs regardless of environment size
-    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[PATCHED] Limiting concurrent jobs to 3 for Windmill memory constraints')
-    $EnvSizeLooper = 3
+    # PATCHED: Limit concurrent jobs for Windmill memory constraints
+    # Use 2 concurrent jobs when resource count >= 1000, else 3
+    $resourceCount = 0
+    if ($null -ne $Resources) {
+        if ($Resources -is [System.Array]) {
+            $resourceCount = $Resources.Count
+        } elseif ($Resources -is [System.Collections.ICollection]) {
+            $resourceCount = $Resources.Count
+        } else {
+            $resourceCount = 1
+        }
+    }
+    $EnvSizeLooper = if ($resourceCount -ge 1000) { 2 } else { 3 }
+    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[PATCHED] Limiting concurrent jobs to '+$EnvSizeLooper+' for Windmill memory constraints (resource count: '+$resourceCount+')')
     
     # Original logic (commented out for reference):
     # switch ($Resources.count)

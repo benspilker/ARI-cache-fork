@@ -197,23 +197,6 @@ Else {
     <######## $SmaResources.(RESOURCE FILE NAME) ##########>
 
     if ($SmaResources) {
-        function Convert-PlainTextFromHtml {
-            param([string]$Value)
-            if ([string]::IsNullOrWhiteSpace($Value)) { return $Value }
-            $decoded = [System.Net.WebUtility]::HtmlDecode($Value)
-            $stripped = $decoded -replace '<[^>]+>', ' '
-            $collapsed = ($stripped -replace '\s+', ' ').Trim()
-            return $collapsed
-        }
-
-        # Ensure "What happened" is plain text even when data is loaded from cache files.
-        $SmaResources = @($SmaResources)
-        foreach ($item in $SmaResources) {
-            if ($null -ne $item -and $item.PSObject.Properties['What happened']) {
-                $item.'What happened' = Convert-PlainTextFromHtml $item.'What happened'
-            }
-        }
-
         # Safely get Resource U sum - handle cases where property might not exist
         $ResourceUSum = 0
         try {
