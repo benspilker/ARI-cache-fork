@@ -79,7 +79,16 @@ function Start-ARIAutProcessJob {
 
                     Get-Job | Where-Object {$_.name -like 'ResourceJob_*'} | Wait-Job
 
-                    $JobNames = (Get-Job | Where-Object {$_.name -like 'ResourceJob_*'}).Name
+                    $JobNames = Get-Job | Where-Object {
+                        $_ -and
+                        $_.PSObject.Properties.Match('Name').Count -gt 0 -and
+                        $_.Name -like 'ResourceJob_*'
+                    } | ForEach-Object { $_.Name }
+                    if ($null -eq $JobNames) {
+                        $JobNames = @()
+                    } elseif ($JobNames -isnot [System.Array]) {
+                        $JobNames = @($JobNames)
+                    }
 
                     Start-Sleep -Seconds 5
 

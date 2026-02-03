@@ -141,11 +141,21 @@ function Start-ARIExtraJobs {
             {
                 # PATCHED: Wait for resource processing jobs to complete before starting Policy job
                 # This prevents exceeding Windmill's concurrent job limits
-                $resourceJobs = Get-Job | Where-Object {$_.name -like 'ResourceJob_*' -and $_.State -eq 'Running'}
+                $resourceJobs = Get-Job | Where-Object {
+                    $_ -and
+                    $_.PSObject.Properties.Match('Name').Count -gt 0 -and
+                    $_.Name -like 'ResourceJob_*' -and
+                    $_.PSObject.Properties.Match('State').Count -gt 0 -and
+                    $_.State -eq 'Running'
+                }
                 if ($resourceJobs) {
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[PATCHED] Waiting for resource processing jobs to complete before starting Policy job')
-                    $resourceJobNames = $resourceJobs.Name
-                    if ($resourceJobNames -isnot [System.Array]) {
+                    $resourceJobNames = $resourceJobs | Where-Object {
+                        $_ -and $_.PSObject.Properties.Match('Name').Count -gt 0
+                    } | ForEach-Object { $_.Name }
+                    if ($null -eq $resourceJobNames) {
+                        $resourceJobNames = @()
+                    } elseif ($resourceJobNames -isnot [System.Array]) {
                         $resourceJobNames = @($resourceJobNames)
                     }
                     Wait-ARIJob -JobNames $resourceJobNames -JobType 'Resource' -LoopTime 5
@@ -178,11 +188,21 @@ function Start-ARIExtraJobs {
             {
                 # PATCHED: Wait for resource processing jobs to complete before starting Advisory job
                 # This prevents exceeding Windmill's concurrent job limits
-                $resourceJobs = Get-Job | Where-Object {$_.name -like 'ResourceJob_*' -and $_.State -eq 'Running'}
+                $resourceJobs = Get-Job | Where-Object {
+                    $_ -and
+                    $_.PSObject.Properties.Match('Name').Count -gt 0 -and
+                    $_.Name -like 'ResourceJob_*' -and
+                    $_.PSObject.Properties.Match('State').Count -gt 0 -and
+                    $_.State -eq 'Running'
+                }
                 if ($resourceJobs) {
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[PATCHED] Waiting for resource processing jobs to complete before starting Advisory job')
-                    $resourceJobNames = $resourceJobs.Name
-                    if ($resourceJobNames -isnot [System.Array]) {
+                    $resourceJobNames = $resourceJobs | Where-Object {
+                        $_ -and $_.PSObject.Properties.Match('Name').Count -gt 0
+                    } | ForEach-Object { $_.Name }
+                    if ($null -eq $resourceJobNames) {
+                        $resourceJobNames = @()
+                    } elseif ($resourceJobNames -isnot [System.Array]) {
                         $resourceJobNames = @($resourceJobNames)
                     }
                     Wait-ARIJob -JobNames $resourceJobNames -JobType 'Resource' -LoopTime 5
