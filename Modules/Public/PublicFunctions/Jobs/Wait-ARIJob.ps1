@@ -51,9 +51,12 @@ function Wait-ARIJob {
         if ($runningJobs -isnot [System.Array]) {
             $runningJobs = @($runningJobs)
         }
-        
-        $jbCount = if ($null -ne $jb -and $jb.PSObject.Properties.Match('Count').Count -gt 0) { $jb.Count } else { 0 }
-        $runningCount = if ($null -ne $runningJobs -and $runningJobs.PSObject.Properties.Match('Count').Count -gt 0) { $runningJobs.Count } else { 0 }
+
+        # Use array subexpression to avoid .Count on non-collection types
+        $jbCount = @($jb).Count
+        $runningCount = @($runningJobs).Count
+
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Jobs Collector types: JobNames=' + $JobNames.GetType().FullName + '; Jobs=' + ($jb | Select-Object -First 1 | ForEach-Object { $_.GetType().FullName }) + '; RunningJobs=' + ($runningJobs | Select-Object -First 1 | ForEach-Object { $_.GetType().FullName }))
         
         if ($jbCount -gt 0) {
             $c = ((($jbCount - $runningCount) / $jbCount) * 100)
