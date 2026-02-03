@@ -118,7 +118,19 @@ function Start-ARISubscriptionJob {
                                 $subObjId -eq $subId
                             } | Select-Object -First 1
                             
-                            $subscriptionName = if ($null -ne $SubName -and $null -ne $SubName.Name) { $SubName.Name } elseif ($null -ne $SubName -and $null -ne $SubName.name) { $SubName.name } else { $subId }
+                            # Safely resolve subscription display name; $SubName can be a string or object
+                            $subscriptionName = $subId
+                            if ($null -ne $SubName) {
+                                $hasNameProp = $SubName.PSObject.Properties.Match('Name').Count -gt 0
+                                $hasnameProp = $SubName.PSObject.Properties.Match('name').Count -gt 0
+                                if ($hasNameProp -and $null -ne $SubName.Name) {
+                                    $subscriptionName = $SubName.Name
+                                } elseif ($hasnameProp -and $null -ne $SubName.name) {
+                                    $subscriptionName = $SubName.name
+                                } elseif ($SubName -is [string] -and -not [string]::IsNullOrEmpty($SubName)) {
+                                    $subscriptionName = $SubName
+                                }
+                            }
                             
                             $obj = [PSCustomObject]@{
                                 'Subscription'      = $subscriptionName

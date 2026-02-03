@@ -160,17 +160,31 @@ function Start-ARIProcessJob {
                 Write-Host 'Waiting Batch Jobs' -ForegroundColor Cyan -NoNewline
                 Write-Host '. This step may take several minutes to finish' -ForegroundColor Cyan
 
-                $InterJobNames = (Get-Job | Where-Object {$_.name -like 'ResourceJob_*' -and $_.State -eq 'Running'}).Name
+                $InterJobNames = Get-Job | Where-Object {
+                        $_ -and
+                        $_.PSObject.Properties.Match('Name').Count -gt 0 -and
+                        $_.Name -like 'ResourceJob_*' -and
+                        $_.PSObject.Properties.Match('State').Count -gt 0 -and
+                        $_.State -eq 'Running'
+                    } | ForEach-Object { $_.Name }
                 # Ensure InterJobNames is always an array
-                if ($InterJobNames -isnot [System.Array]) {
+                if ($null -eq $InterJobNames) {
+                    $InterJobNames = @()
+                } elseif ($InterJobNames -isnot [System.Array]) {
                     $InterJobNames = @($InterJobNames)
                 }
 
                 Wait-ARIJob -JobNames $InterJobNames -JobType 'Resource Batch' -LoopTime 5
 
-                $JobNames = (Get-Job | Where-Object {$_.name -like 'ResourceJob_*'}).Name
+                $JobNames = Get-Job | Where-Object {
+                        $_ -and
+                        $_.PSObject.Properties.Match('Name').Count -gt 0 -and
+                        $_.Name -like 'ResourceJob_*'
+                    } | ForEach-Object { $_.Name }
                 # Ensure JobNames is always an array (PowerShell Core returns single string for one job)
-                if ($JobNames -isnot [System.Array]) {
+                if ($null -eq $JobNames) {
+                    $JobNames = @()
+                } elseif ($JobNames -isnot [System.Array]) {
                     $JobNames = @($JobNames)
                 }
 
