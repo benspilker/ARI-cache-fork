@@ -358,7 +358,10 @@ Function Invoke-ARI {
     $DDName = ($ReportName + "_Diagram_" + (get-date -Format "yyyy-MM-dd_HH_mm") + ".xml")
     $DDFile = Join-Path $DefaultPath $DDName 
 
-    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Excel file: ' + $File)
+    $skipExcelVar = Get-Variable -Name SkipExcel -ErrorAction SilentlyContinue
+    if ($null -eq $skipExcelVar -or -not $skipExcelVar.Value.IsPresent) {
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Excel file: ' + $File)
+    }
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Starting Default Jobs.')
 

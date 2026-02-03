@@ -22,6 +22,21 @@ function Wait-ARIJob {
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Starting Jobs Collector.')
 
+    # Normalize and guard against null/empty job name lists
+    if ($null -eq $JobNames) {
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'No job names provided to Jobs Collector; skipping wait.')
+        return
+    }
+    if ($JobNames -isnot [System.Array]) {
+        $JobNames = @($JobNames)
+    }
+    $JobNames = $JobNames | Where-Object { $_ -and -not [string]::IsNullOrEmpty($_) }
+    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Jobs Collector received job names: '+($JobNames -join ', '))
+    if ($null -eq $JobNames -or $JobNames.Count -eq 0) {
+        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'No valid job names provided to Jobs Collector; skipping wait.')
+        return
+    }
+
     $c = 0
 
     while (get-job -Name $JobNames | Where-Object { $_.State -eq 'Running' }) {
