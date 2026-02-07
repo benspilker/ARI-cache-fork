@@ -69,6 +69,14 @@ function Start-ARIExtractionOrchestration {
     # Safely access PolicyAssign.policyAssignments.Count - handle null/empty cases
     $PolicyCount = "0"
     if ($null -ne $PolicyAssign) {
+        # Normalize single assignment objects to array so downstream policy job can run
+        if ($PolicyAssign -is [PSCustomObject]) {
+            $hasAssignmentId = $PolicyAssign.PSObject.Properties.Name -contains 'policyAssignmentId'
+            $hasPolicyAssignments = $PolicyAssign.PSObject.Properties.Name -contains 'policyAssignments'
+            if ($hasAssignmentId -and -not $hasPolicyAssignments) {
+                $PolicyAssign = @($PolicyAssign)
+            }
+        }
         $policyAssignType = $PolicyAssign.PSObject.TypeNames | Select-Object -First 1
         if ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
             $policyAssignKeys = $PolicyAssign.PSObject.Properties.Name -join ','

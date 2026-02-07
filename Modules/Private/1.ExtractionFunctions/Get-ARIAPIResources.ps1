@@ -199,6 +199,17 @@ function Get-ARIAPIResources {
                                             } elseif ($null -ne $summaryItem.policyAssignments) {
                                                 $allPolicyAssignments += @($summaryItem.policyAssignments)
                                             }
+                                        } else {
+                                            # Some tenants return assignments directly in the summarize array
+                                            $hasAssignmentId = $false
+                                            if ($summaryItem -is [PSCustomObject]) {
+                                                $hasAssignmentId = $summaryItem.PSObject.Properties.Name -contains 'policyAssignmentId'
+                                            } elseif ($summaryItem -is [System.Collections.Hashtable]) {
+                                                $hasAssignmentId = $summaryItem.ContainsKey('policyAssignmentId')
+                                            }
+                                            if ($hasAssignmentId) {
+                                                $allPolicyAssignments += @($summaryItem)
+                                            }
                                         }
                                     }
                                 }
@@ -222,6 +233,12 @@ function Get-ARIAPIResources {
                                         $PolicyAssignCount = 1
                                         $PolicyAssign = @($PolicyAssign.policyAssignments)
                                     }
+                                } elseif (
+                                    ($PolicyAssign -is [PSCustomObject] -and ($PolicyAssign.PSObject.Properties.Name -contains 'policyAssignmentId')) -or
+                                    ($PolicyAssign -is [System.Collections.Hashtable] -and $PolicyAssign.ContainsKey('policyAssignmentId'))
+                                ) {
+                                    $PolicyAssignCount = 1
+                                    $PolicyAssign = @($PolicyAssign)
                                 } else {
                                     $PolicyAssignCount = 0
                                     $PolicyAssign = @()
@@ -233,9 +250,27 @@ function Get-ARIAPIResources {
                         } else {
                             $PolicyAssign = @()
                         }
+
+                        if ($PolicyAssign -is [PSCustomObject]) {
+                            $PolicyAssign = @($PolicyAssign)
+                        }
                         
                         $policyAssignType = if ($null -ne $PolicyAssign) { $PolicyAssign.PSObject.TypeNames | Select-Object -First 1 } else { 'null' }
                         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Collected ' + $PolicyAssignCount + ' policy assignment(s) for subscription ' + $sub + '; PolicyAssignType=' + $policyAssignType)
+                        if ($PolicyAssignCount -gt 0 -and $PolicyAssign -is [System.Array]) {
+                            $firstAssignId = $null
+                            $firstItem = $PolicyAssign | Select-Object -First 1
+                            if ($null -ne $firstItem) {
+                                if ($firstItem -is [PSCustomObject]) {
+                                    if ($firstItem.PSObject.Properties.Name -contains 'policyAssignmentId') { $firstAssignId = $firstItem.policyAssignmentId }
+                                } elseif ($firstItem -is [System.Collections.Hashtable]) {
+                                    if ($firstItem.ContainsKey('policyAssignmentId')) { $firstAssignId = $firstItem['policyAssignmentId'] }
+                                }
+                            }
+                            if ($null -ne $firstAssignId -and $firstAssignId -ne '') {
+                                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'First policyAssignmentId=' + $firstAssignId)
+                            }
+                        }
                         Start-Sleep -Milliseconds 200
                         $url = ('https://'+ $AzURL +'/subscriptions/'+$sub+'/providers/Microsoft.Authorization/policySetDefinitions?api-version=2023-04-01')
                         $PolicySetDef = Get-ARIAllPages -Url $url
