@@ -69,7 +69,10 @@ function Start-ARIExtractionOrchestration {
     # Safely access PolicyAssign.policyAssignments.Count - handle null/empty cases
     $PolicyCount = "0"
     if ($null -ne $PolicyAssign) {
+        $policyAssignType = $PolicyAssign.PSObject.TypeNames | Select-Object -First 1
         if ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
+            $policyAssignKeys = $PolicyAssign.PSObject.Properties.Name -join ','
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'PolicyAssign shape: type=' + $policyAssignType + '; keys=' + $policyAssignKeys)
             # Safely check if policyAssignments property exists before accessing
             $hasPolicyAssignments = $false
             if ($PolicyAssign -is [PSCustomObject]) {
@@ -89,9 +92,11 @@ function Start-ARIExtractionOrchestration {
                 Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'No Policy data collected (PolicyAssign has no policyAssignments property)')
             }
         } elseif ($PolicyAssign -is [System.Array]) {
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'PolicyAssign shape: type=' + $policyAssignType + '; arrayCount=' + $PolicyAssign.Count)
             $PolicyCount = [string]$PolicyAssign.Count
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Policy data collected: ' + $PolicyCount + ' policy assignment(s)')
         } else {
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'PolicyAssign shape: type=' + $policyAssignType + '; treating as single object')
             $PolicyCount = "1"
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Policy data collected: 1 policy assignment')
         }

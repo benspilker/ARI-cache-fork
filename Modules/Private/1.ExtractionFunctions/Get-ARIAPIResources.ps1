@@ -160,7 +160,21 @@ function Get-ARIAPIResources {
                     try {
                         $url = ('https://'+ $AzURL +'/subscriptions/'+$sub+'/providers/Microsoft.PolicyInsights/policyStates/latest/summarize?api-version=2019-10-01')
                         $policySummarizeResponse = Invoke-RestMethod -Uri $url -Headers $header -Method POST
-                        $PolicyAssign = $policySummarizeResponse.value
+                        # Log summarize response shape for troubleshooting
+                        $summaryType = $policySummarizeResponse.PSObject.TypeNames | Select-Object -First 1
+                        $summaryKeys = $policySummarizeResponse.PSObject.Properties.Name -join ','
+                        $summaryValue = $policySummarizeResponse.value
+                        $summaryValueType = if ($null -ne $summaryValue) { $summaryValue.PSObject.TypeNames | Select-Object -First 1 } else { 'null' }
+                        $summaryValueKeys = if ($null -ne $summaryValue -and ($summaryValue -is [PSCustomObject] -or $summaryValue -is [System.Collections.Hashtable])) { $summaryValue.PSObject.Properties.Name -join ',' } else { '' }
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Policy summarize response type=' + $summaryType + '; keys=' + $summaryKeys + '; valueType=' + $summaryValueType + '; valueKeys=' + $summaryValueKeys)
+
+                        # Prefer .value, but fall back to top-level policyAssignments if present
+                        if ($null -eq $summaryValue -and ($policySummarizeResponse.PSObject.Properties.Name -contains 'policyAssignments')) {
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Policy summarize response missing .value; using top-level policyAssignments')
+                            $summaryValue = $policySummarizeResponse.policyAssignments
+                        }
+
+                        $PolicyAssign = $summaryValue
                         
                         # The summarize API returns an array in .value, where each element may have policyAssignments
                         # We need to extract all policyAssignments from all elements
@@ -220,7 +234,8 @@ function Get-ARIAPIResources {
                             $PolicyAssign = @()
                         }
                         
-                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Collected ' + $PolicyAssignCount + ' policy assignment(s) for subscription ' + $sub)
+                        $policyAssignType = if ($null -ne $PolicyAssign) { $PolicyAssign.PSObject.TypeNames | Select-Object -First 1 } else { 'null' }
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Collected ' + $PolicyAssignCount + ' policy assignment(s) for subscription ' + $sub + '; PolicyAssignType=' + $policyAssignType)
                         Start-Sleep -Milliseconds 200
                         $url = ('https://'+ $AzURL +'/subscriptions/'+$sub+'/providers/Microsoft.Authorization/policySetDefinitions?api-version=2023-04-01')
                         $PolicySetDef = Get-ARIAllPages -Url $url
