@@ -233,6 +233,11 @@ Function Invoke-CachedARI-Patched {
     if ($DiagramOnly.IsPresent) {
         $SkipDiagram = $false
         $SkipExcel = $true
+        $SkipAdvisory = $true
+        $SkipPolicy = $true
+        $SkipVMDetails = $true
+        $IncludeCosts = $false
+        $QuotaUsage = $false
     }
     if ($Overview -eq 1 -and $SkipAPIs)
         {
@@ -1545,7 +1550,11 @@ Function Invoke-CachedARI-Patched {
         # but skip diagram and other resource-intensive jobs
         try {
             Write-Debug "[UseExistingCache] Calling Start-ARIExtraJobs with Subscriptions=$subscriptionsCountForJob, Resources=$resourcesCount"
-            Start-ARIExtraJobs -SkipDiagram $SkipDiagram -SkipAdvisory $SkipAdvisory -SkipPolicy $SkipPolicy -SecurityCenter $Security -Subscriptions $Subscriptions -Resources $resourcesForJob -Advisories $Advisories -DDFile $DDFile -DiagramCache $DiagramCache -FullEnv $FullEnv -ResourceContainers $ResourceContainers -Security $Security -PolicyAssign $PolicyAssign -PolicySetDef $PolicySetDef -PolicyDef $PolicyDef -IncludeCosts $IncludeCosts -CostData $CostData -Automation $Automation
+            if ($DiagramOnly.IsPresent) {
+                Write-Host "[DiagramOnly] Skipping Start-ARIExtraJobs (diagram will be generated after processing)." -ForegroundColor Gray
+            } else {
+                Start-ARIExtraJobs -SkipDiagram $SkipDiagram -SkipAdvisory $SkipAdvisory -SkipPolicy $SkipPolicy -SecurityCenter $Security -Subscriptions $Subscriptions -Resources $resourcesForJob -Advisories $Advisories -DDFile $DDFile -DiagramCache $DiagramCache -FullEnv $FullEnv -ResourceContainers $ResourceContainers -Security $Security -PolicyAssign $PolicyAssign -PolicySetDef $PolicySetDef -PolicyDef $PolicyDef -IncludeCosts $IncludeCosts -CostData $CostData -Automation $Automation
+            }
             Write-Debug "[UseExistingCache] Start-ARIExtraJobs completed successfully"
         } catch {
             # Safe error handling - check property existence before accessing
@@ -1582,7 +1591,11 @@ Function Invoke-CachedARI-Patched {
             $Subscriptions = @($Subscriptions)
         }
         
-        Start-ARIExtraJobs -SkipDiagram $SkipDiagram -SkipAdvisory $SkipAdvisory -SkipPolicy $SkipPolicy -SecurityCenter $Security -Subscriptions $Subscriptions -Resources $Resources -Advisories $Advisories -DDFile $DDFile -DiagramCache $DiagramCache -FullEnv $FullEnv -ResourceContainers $ResourceContainers -Security $Security -PolicyAssign $PolicyAssign -PolicySetDef $PolicySetDef -PolicyDef $PolicyDef -IncludeCosts $IncludeCosts -CostData $CostData -Automation $Automation
+        if ($DiagramOnly.IsPresent) {
+            Write-Host "[DiagramOnly] Skipping Start-ARIExtraJobs (diagram will be generated after processing)." -ForegroundColor Gray
+        } else {
+            Start-ARIExtraJobs -SkipDiagram $SkipDiagram -SkipAdvisory $SkipAdvisory -SkipPolicy $SkipPolicy -SecurityCenter $Security -Subscriptions $Subscriptions -Resources $Resources -Advisories $Advisories -DDFile $DDFile -DiagramCache $DiagramCache -FullEnv $FullEnv -ResourceContainers $ResourceContainers -Security $Security -PolicyAssign $PolicyAssign -PolicySetDef $PolicySetDef -PolicyDef $PolicyDef -IncludeCosts $IncludeCosts -CostData $CostData -Automation $Automation
+        }
 
         Start-ARIProcessOrchestration -Subscriptions $Subscriptions -Resources $Resources -Retirements $Retirements -DefaultPath $DefaultPath -Heavy $Heavy -File $File -InTag $InTag -Automation $Automation
     }
