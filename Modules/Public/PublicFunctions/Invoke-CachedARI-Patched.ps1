@@ -88,6 +88,9 @@
 .PARAMETER DiagramFullEnvironment
     Use this parameter to include the full environment in the diagram. By default the Network Topology Diagram will only include VNETs that are peered with other VNETs, this parameter will force the diagram to include all VNETs.
 
+.PARAMETER DiagramOnly
+    Use this parameter to only generate the Draw.io diagram XML and skip Excel/report output.
+
 .PARAMETER ReportName
     Specifies the name of the report. Default is 'AzureResourceInventory'.
 
@@ -164,6 +167,7 @@ Function Invoke-CachedARI-Patched {
         [switch]$Help,
         [switch]$DeviceLogin,
         [switch]$DiagramFullEnvironment,
+        [switch]$DiagramOnly,
         [switch]$UseExistingCache,
         [Alias("NoExcel","SkipReport")]
         [switch]$SkipExcel,
@@ -226,6 +230,10 @@ Function Invoke-CachedARI-Patched {
                     exit
                 }
         }
+    if ($DiagramOnly.IsPresent) {
+        $SkipDiagram = $false
+        $SkipExcel = $true
+    }
     if ($Overview -eq 1 -and $SkipAPIs)
         {
             $Overview = 2
@@ -1593,6 +1601,36 @@ Function Invoke-CachedARI-Patched {
             Write-Host "Processing Phase Finished: " -ForegroundColor Green -NoNewline
             Write-Host $ProcessingTotalTime -ForegroundColor Cyan
         }
+
+    if ($DiagramOnly.IsPresent) {
+        Write-Host "[DiagramOnly] Generating Draw.io diagram only (skipping Excel/report)." -ForegroundColor Green
+        try {
+            Invoke-ARIDrawIOJob -Subscriptions $Subscriptions -Resources $Resources -Advisories $Advisories -DDFile $DDFile -DiagramCache $DiagramCache -FullEnv $FullEnv -ResourceContainers $ResourceContainers -Automation $Automation -ARIModule $script:ARIModulePath
+            if (!$Automation.IsPresent) {
+                $JobNames = (Get-Job | Where-Object { $_.name -eq 'DrawDiagram' }).Name
+                if ($JobNames) {
+                    Wait-ARIJob -JobNames $JobNames -JobType 'Diagram' -LoopTime 5
+                    Remove-Job -Name 'DrawDiagram' | Out-Null
+                }
+            }
+        } catch {
+            Write-Error "[DiagramOnly] Diagram generation failed: $($_.Exception.Message)"
+            throw
+        }
+
+        if ($StorageAccount) {
+            Write-Output "Sending Diagram file to Storage Account:"
+            Write-Output $DDFile
+            Set-AzStorageBlobContent -File $DDFile -Container $StorageContainer -Context $StorageContext | Out-Null
+            if ($Debug.IsPresent) {
+                $LogFilePath = Join-Path $DefaultPath 'DiagramLogFile.log'
+                Set-AzStorageBlobContent -File $LogFilePath -Container $StorageContainer -Context $StorageContext -Force | Out-Null
+            }
+        }
+
+        Write-Host "Draw.io Diagram file saved at: $DDFile" -ForegroundColor Green
+        return
+    }
 
     # Skip Excel generation if SkipExcel is specified (useful for batch collection where only cache is needed)
     if ($SkipExcel.IsPresent) {

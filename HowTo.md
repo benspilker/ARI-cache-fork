@@ -69,6 +69,7 @@ This will authenticate you to Azure and begin collecting inventory data from all
 | Diagram | Create Draw.IO diagram | `-Diagram` | Diagram |
 | SkipDiagram | Skip diagram creation | `-SkipDiagram` | Diagram |
 | DiagramFullEnvironment | Include all network components | `-DiagramFullEnvironment` | Diagram |
+| DiagramOnly | Only generate Draw.io diagram XML (skip Excel/report) | `-DiagramOnly` | Diagram |
 | **Automation** |  |  |  |
 | Automation | Run using an Automation Account | `-Automation` | Automation |
 | StorageAccount | Storage account for automation | `-StorageAccount` | Automation |
@@ -128,6 +129,9 @@ To skip the creation of network diagrams (faster execution):
 
 ```powershell
 Invoke-ARI -TenantID <Azure-Tenant-ID> -SkipDiagram
+
+#### Diagram Only (XML)
+Invoke-ARI -TenantID <Azure-Tenant-ID> -DiagramOnly
 ```
 
 ## Multi-Tenant Support

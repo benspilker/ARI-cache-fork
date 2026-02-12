@@ -150,6 +150,10 @@ Invoke-ARI -TenantID <Azure-Tenant-ID> -SubscriptionID <Subscription-ID> -SkipAd
 
 ```powershell
 Invoke-ARI -TenantID <Azure-Tenant-ID> -SkipDiagram
+
+**Diagram Only (XML)**
+
+Invoke-ARI -TenantID <Azure-Tenant-ID> -DiagramOnly
 ```
 
 ### Automation Account Integration
@@ -194,6 +198,7 @@ See the [Automation Guide](https://github.com/microsoft/ARI/blob/main/docs/advan
 | **Diagram Options** | | |
 | SkipDiagram | Skip diagram creation | `-SkipDiagram` |
 | DiagramFullEnvironment | Include all network components in diagram | `-DiagramFullEnvironment` |
+| DiagramOnly | Only generate Draw.io diagram XML (skip Excel/report) | `-DiagramOnly` |
 | **Other Options** | | |
 | Debug | Run in debug mode | `-Debug` |
 | NoAutoUpdate | Skip the auto update of the ARI Module | `-NoAutoUpdate` |
