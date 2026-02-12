@@ -1622,6 +1622,12 @@ Function Invoke-CachedARI-Patched {
     if ($DiagramOnly.IsPresent) {
         Write-Host "[DiagramOnly] Generating Draw.io diagram only (skipping Excel/report)." -ForegroundColor Green
         try {
+            # Reduce memory pressure: org chart only needs ResourceContainers
+            $Resources = @()
+            $Advisories = @()
+            $FullEnv = $false
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
             Invoke-ARIDrawIOJob -Subscriptions $Subscriptions -Resources $Resources -Advisories $Advisories -DDFile $DDFile -DiagramCache $DiagramCache -FullEnv $FullEnv -ResourceContainers $ResourceContainers -Automation $Automation -ARIModule $script:ARIModulePath
             if (!$Automation.IsPresent) {
                 $JobNames = (Get-Job | Where-Object { $_.name -eq 'DrawDiagram' }).Name
