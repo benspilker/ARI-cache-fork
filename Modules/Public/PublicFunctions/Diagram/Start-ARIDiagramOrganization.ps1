@@ -187,6 +187,7 @@ Function Start-ARIDiagramOrganization {
     Function Start-OrgDiagram {
 
             $OrgObjs = $ResourceContainers | Where-Object {$_.Type -eq 'microsoft.resources/subscriptions'} 
+            $Script:PlottedSubscriptionIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
             $Script:1stLevel = @()
             $Lvl2 = @()
@@ -263,6 +264,7 @@ Function Start-ARIDiagramOrganization {
 
             foreach($Sub in $RoundSubs00)
             {
+                if ($Sub.subscriptionid) { [void]$Script:PlottedSubscriptionIds.Add([string]$Sub.subscriptionid) }
                 $RGs = $ResourceContainers | Where-Object {$_.Type -eq 'microsoft.resources/subscriptions/resourcegroups' -and $_.subscriptionid -eq $sub.subscriptionid}
 
                 $Script:XmlWriter.WriteStartElement('object')            
@@ -336,6 +338,7 @@ Function Start-ARIDiagramOrganization {
 
                 foreach($Sub in $RoundSubs0)
                     {
+                        if ($Sub.subscriptionid) { [void]$Script:PlottedSubscriptionIds.Add([string]$Sub.subscriptionid) }
                         $RGs = $ResourceContainers | Where-Object {$_.Type -eq 'microsoft.resources/subscriptions/resourcegroups' -and $_.subscriptionid -eq $sub.subscriptionid}
 
                         $Script:XmlWriter.WriteStartElement('object')            
@@ -517,6 +520,7 @@ Function Start-ARIDiagramOrganization {
 
                         foreach($Sub in $RoundSubs)
                             {                                
+                                if ($Sub.subscriptionid) { [void]$Script:PlottedSubscriptionIds.Add([string]$Sub.subscriptionid) }
                                 $RGs = $ResourceContainers | Where-Object {$_.Type -eq 'microsoft.resources/subscriptions/resourcegroups' -and $_.subscriptionid -eq $sub.subscriptionid}
 
                                 $Script:XmlWriter.WriteStartElement('object')
@@ -694,6 +698,7 @@ Function Start-ARIDiagramOrganization {
 
                                 foreach($Sub in $RoundSubs3)
                                     {                                
+                                        if ($Sub.subscriptionid) { [void]$Script:PlottedSubscriptionIds.Add([string]$Sub.subscriptionid) }
 
                                         $RGs = $ResourceContainers | Where-Object {$_.Type -eq 'microsoft.resources/subscriptions/resourcegroups' -and $_.subscriptionid -eq $sub.subscriptionid}
 
@@ -868,6 +873,7 @@ Function Start-ARIDiagramOrganization {
 
                                             foreach($Sub in $RoundSubs4)
                                                 {                                
+                                                    if ($Sub.subscriptionid) { [void]$Script:PlottedSubscriptionIds.Add([string]$Sub.subscriptionid) }
 
                                                     $RGs = $ResourceContainers | Where-Object {$_.Type -eq 'microsoft.resources/subscriptions/resourcegroups' -and $_.subscriptionid -eq $sub.subscriptionid}
 
@@ -905,6 +911,48 @@ Function Start-ARIDiagramOrganization {
 
                     }
 
+            }
+
+            # Fallback: include subscriptions that were not plotted by fixed-depth hierarchy logic.
+            $MissingSubs = @(
+                $OrgObjs | Where-Object {
+                    $_.subscriptionid -and -not $Script:PlottedSubscriptionIds.Contains([string]$_.subscriptionid)
+                }
+            )
+            if ($MissingSubs.Count -gt 0) {
+                Write-Output ("DrawIOOrgsFile - " + (get-date -Format 'yyyy-MM-dd_HH_mm_ss') + " - Warning: " + $MissingSubs.Count + " subscription(s) not mapped to org hierarchy; placing under 'Unmapped Subscriptions'.")
+
+                $fallbackHeight = (($MissingSubs.Count * 90) + 80)
+                $rootContainerId = $Script:ContID0
+                Add-Container1 '350' '0' '260' $fallbackHeight 'Unmapped Subscriptions'
+                Add-Connection $rootContainerId $Script:ContID
+
+                $LocalTop = 50
+                $LocalLeft = 25
+                foreach ($Sub in $MissingSubs) {
+                    if ($Sub.subscriptionid) { [void]$Script:PlottedSubscriptionIds.Add([string]$Sub.subscriptionid) }
+                    $RGs = $ResourceContainers | Where-Object { $_.Type -eq 'microsoft.resources/subscriptions/resourcegroups' -and $_.subscriptionid -eq $Sub.subscriptionid }
+
+                    $Script:XmlWriter.WriteStartElement('object')
+                    $Script:XmlWriter.WriteAttributeString('label', $Sub.name)
+                    $Script:XmlWriter.WriteAttributeString('id', ($Script:CellIDRes+'-'+($Script:CelNum++)))
+                    Add-Icon $Ret1 $LocalLeft $LocalTop '170' '70' $Script:ContID
+                    $Script:XmlWriter.WriteEndElement()
+
+                    $Script:XmlWriter.WriteStartElement('object')
+                    $Script:XmlWriter.WriteAttributeString('label', '')
+                    $RGNum = 1
+                    foreach($RG in $RGs) {
+                        $Attr = ('ResourceGroup_'+[string]$RGNum)
+                        $Script:XmlWriter.WriteAttributeString($Attr, [string]$RG.Name)
+                        $RGNum++
+                    }
+                    $Script:XmlWriter.WriteAttributeString('id', ($Script:CellID+'-'+($Script:IDNum++)))
+                    Add-Icon $Script:IconSubscription ($LocalLeft+160) ($LocalTop+40) '31' '51' $Script:ContID
+                    $Script:XmlWriter.WriteEndElement()
+
+                    $LocalTop = $LocalTop + 90
+                }
             }
 
     }
