@@ -187,6 +187,18 @@ Function Start-ARIDiagramOrganization {
     Function Start-OrgDiagram {
 
             $OrgObjs = $ResourceContainers | Where-Object {$_.Type -eq 'microsoft.resources/subscriptions'} 
+            # Normalize ancestor chain ordering per subscription so index-based logic is consistent.
+            # Expected by existing renderer: [0] = closest management group to subscription.
+            foreach ($orgObj in $OrgObjs) {
+                $chain = @($orgObj.properties.managementgroupancestorschain)
+                if ($chain.Count -gt 1) {
+                    $firstDisplay = [string]$chain[0].displayname
+                    if ($firstDisplay -eq 'tenant root group') {
+                        [array]::Reverse($chain)
+                        $orgObj.properties.managementgroupancestorschain = $chain
+                    }
+                }
+            }
             $Script:PlottedSubscriptionIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
 
             $Script:1stLevel = @()
@@ -932,9 +944,16 @@ Function Start-ARIDiagramOrganization {
                 foreach ($Sub in $MissingSubs) {
                     if ($Sub.subscriptionid) { [void]$Script:PlottedSubscriptionIds.Add([string]$Sub.subscriptionid) }
                     $RGs = $ResourceContainers | Where-Object { $_.Type -eq 'microsoft.resources/subscriptions/resourcegroups' -and $_.subscriptionid -eq $Sub.subscriptionid }
+                    $parentMgmtGroup = ""
+                    $chain = @($Sub.properties.managementgroupancestorschain)
+                    if ($chain.Count -gt 0) {
+                        # Chain is normalized to leaf->root above, so index 0 is nearest MG.
+                        $parentMgmtGroup = [string]$chain[0].displayname
+                    }
 
                     $Script:XmlWriter.WriteStartElement('object')
                     $Script:XmlWriter.WriteAttributeString('label', $Sub.name)
+                    if ($parentMgmtGroup) { $Script:XmlWriter.WriteAttributeString('ExpectedParentManagementGroup', $parentMgmtGroup) }
                     $Script:XmlWriter.WriteAttributeString('id', ($Script:CellIDRes+'-'+($Script:CelNum++)))
                     Add-Icon $Ret1 $LocalLeft $LocalTop '170' '70' $Script:ContID
                     $Script:XmlWriter.WriteEndElement()
@@ -954,6 +973,10 @@ Function Start-ARIDiagramOrganization {
                     $LocalTop = $LocalTop + 90
                 }
             }
+
+            $totalSubs = @($OrgObjs).Count
+            $plottedSubs = $Script:PlottedSubscriptionIds.Count
+            Write-Output ("DrawIOOrgsFile - " + (get-date -Format 'yyyy-MM-dd_HH_mm_ss') + " - Subscription plot summary: total=" + $totalSubs + "; plotted=" + $plottedSubs + "; missing=" + ($totalSubs - $plottedSubs))
 
     }
 
