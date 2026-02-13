@@ -171,8 +171,9 @@ Function Invoke-CachedARI-Patched {
         [switch]$UseExistingCache,
         [Alias("NoExcel","SkipReport")]
         [switch]$SkipExcel,
+        [switch]$PreserveCache,
         [switch]$IncludePresidioPolicy
-        )
+    )
 
     $script:PrevDebugPreference = $DebugPreference
     $script:PrevVerbosePreference = $VerbosePreference
@@ -2055,9 +2056,11 @@ Function Invoke-CachedARI-Patched {
     # Clear memory to remove as many memory footprint as possible
     Clear-ARIMemory
 
-    # Clear Cache Folder for future runs (skip if using existing cache)
-    if (-not $useCache) {
+    # Clear Cache Folder for future runs (skip if using existing cache or when caller requests preservation)
+    if (-not $useCache -and -not $PreserveCache.IsPresent) {
         Clear-ARICacheFolder -ReportCache $ReportCache
+    } elseif ($PreserveCache.IsPresent) {
+        Write-Host "[PreserveCache] Preserving cache files as requested by caller" -ForegroundColor Green
     } else {
         Write-Host "[UseExistingCache] Preserving cache files for future use" -ForegroundColor Green
     }
