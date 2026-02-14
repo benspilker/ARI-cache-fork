@@ -30,6 +30,7 @@ function Invoke-ARIDrawIOJob {
             catch
                 {
                     Write-Output ($_.Exception.Message)
+                    throw
                 }
         }
     Else
@@ -51,6 +52,7 @@ function Invoke-ARIDrawIOJob {
                 catch
                     {
                         ('DrawIOCoreJob - '+(get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+$_.Exception.Message) | Out-File -FilePath $LogFile -Append
+                        throw
                     }
                 ('DrawIOCoreJob - '+(get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - Draw.IO Ended.') | Out-File -FilePath $LogFile -Append
 
