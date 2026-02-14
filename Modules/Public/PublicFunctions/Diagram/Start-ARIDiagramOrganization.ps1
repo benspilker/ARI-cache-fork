@@ -320,7 +320,11 @@ Function Start-ARIDiagramOrganization {
                 $idx = 0
                 foreach ($name in $namesAtDepth) {
                     $display = [string]$mgNodes[$name].Display
-                    $directSubs = @($subsByParent[$name])
+                    $directSubs = if ($subsByParent.ContainsKey($name)) {
+                        @($subsByParent[$name] | Where-Object { $null -ne $_ })
+                    } else {
+                        @()
+                    }
                     $height = if ($directSubs.Count -gt 0) { (($directSubs.Count * 90) + 50) } else { 80 }
                     $x = $start + ($idx * $xSpacing)
                     $y = if ($depth -eq 0) { 0 } else { $yBase + (($depth - 1) * $ySpacing) }

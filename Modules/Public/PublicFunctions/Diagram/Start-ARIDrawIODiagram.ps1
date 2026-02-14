@@ -164,7 +164,19 @@ function Start-ARIDrawIODiagram {
 
     $failedJobs = @($DiagramJobs | Where-Object { $_.State -in @('Failed','Stopped') })
     if ($failedJobs.Count -gt 0) {
-        $failedList = ($failedJobs | ForEach-Object { "$($_.Name)[$($_.State)]" }) -join ', '
+        $failedDetails = @()
+        foreach ($fj in $failedJobs) {
+            $reason = $null
+            if ($fj.ChildJobs -and $fj.ChildJobs.Count -gt 0) {
+                $reason = $fj.ChildJobs[0].JobStateInfo.Reason
+            }
+            $jobOutput = (Receive-Job -Job $fj -ErrorAction SilentlyContinue | Out-String).Trim()
+            $detail = "$($fj.Name)[$($fj.State)]"
+            if ($reason) { $detail += " reason=$($reason.ToString())" }
+            if ($jobOutput) { $detail += " output=$jobOutput" }
+            $failedDetails += $detail
+        }
+        $failedList = $failedDetails -join '; '
         ('DrawIOCoreFile - '+(get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - Error: One or more diagram jobs failed: ' + $failedList) | Out-File -FilePath $LogFile -Append
         throw "Diagram job failure detected: $failedList"
     }
