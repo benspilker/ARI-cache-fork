@@ -188,6 +188,21 @@ Function Start-ARIDiagramOrganization {
 
             $OrgObjs = $ResourceContainers | Where-Object {$_.Type -eq 'microsoft.resources/subscriptions'}
             $Script:PlottedSubscriptionIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+            $Script:InvalidChainEntries = 0
+
+            function Test-HashtableKey {
+                param(
+                    [hashtable]$Table,
+                    [object]$Key
+                )
+                if ($null -eq $Table) { return $false }
+                if ($null -eq $Key) { return $false }
+                if ($Key -is [string]) {
+                    if ([string]::IsNullOrWhiteSpace($Key)) { return $false }
+                    return $Table.ContainsKey($Key)
+                }
+                return $Table.ContainsKey($Key)
+            }
 
             function New-OrgContainer {
                 param(
@@ -236,6 +251,7 @@ Function Start-ARIDiagramOrganization {
                         $nodeName = [string]$chain[$i].name
                         $nodeDisplay = [string]$chain[$i].displayname
                         if ([string]::IsNullOrWhiteSpace($nodeName)) {
+                            $Script:InvalidChainEntries++
                             continue
                         }
                         if ([string]::IsNullOrWhiteSpace($nodeDisplay)) {
@@ -245,7 +261,7 @@ Function Start-ARIDiagramOrganization {
                         if ([string]::IsNullOrWhiteSpace($parentName)) {
                             $parentName = $rootName
                         }
-                        if (-not $mgNodes.ContainsKey($nodeName)) {
+                        if (-not (Test-HashtableKey -Table $mgNodes -Key $nodeName)) {
                             $mgNodes[$nodeName] = @{
                                 Name = $nodeName
                                 Display = $nodeDisplay
@@ -258,7 +274,7 @@ Function Start-ARIDiagramOrganization {
                         $parentKey = $leafName
                     }
                 }
-                if (-not $subsByParent.ContainsKey($parentKey)) {
+                if (-not (Test-HashtableKey -Table $subsByParent -Key $parentKey)) {
                     $subsByParent[$parentKey] = @()
                 }
                 $subsByParent[$parentKey] += $sub
@@ -268,8 +284,8 @@ Function Start-ARIDiagramOrganization {
             foreach ($entry in $mgNodes.GetEnumerator()) {
                 $nodeName = $entry.Key
                 $parentName = $entry.Value.ParentName
-                if ($parentName) {
-                    if (-not $childrenByParent.ContainsKey($parentName)) { $childrenByParent[$parentName] = @() }
+                if (-not [string]::IsNullOrWhiteSpace([string]$parentName)) {
+                    if (-not (Test-HashtableKey -Table $childrenByParent -Key $parentName)) { $childrenByParent[$parentName] = @() }
                     if ($childrenByParent[$parentName] -notcontains $nodeName) {
                         $childrenByParent[$parentName] += $nodeName
                     }
@@ -284,7 +300,8 @@ Function Start-ARIDiagramOrganization {
                 $cur = $queue.Dequeue()
                 $nextDepth = [int]$depthByName[$cur] + 1
                 foreach ($child in @($childrenByParent[$cur])) {
-                    if (-not $depthByName.ContainsKey($child)) {
+                    if ([string]::IsNullOrWhiteSpace([string]$child)) { continue }
+                    if (-not (Test-HashtableKey -Table $depthByName -Key $child)) {
                         $depthByName[$child] = $nextDepth
                         $queue.Enqueue($child)
                     }
@@ -294,7 +311,7 @@ Function Start-ARIDiagramOrganization {
             $nodesByDepth = @{}
             foreach ($name in $depthByName.Keys) {
                 $d = [int]$depthByName[$name]
-                if (-not $nodesByDepth.ContainsKey($d)) { $nodesByDepth[$d] = @() }
+                if (-not (Test-HashtableKey -Table $nodesByDepth -Key $d)) { $nodesByDepth[$d] = @() }
                 $nodesByDepth[$d] += $name
             }
 
@@ -320,7 +337,7 @@ Function Start-ARIDiagramOrganization {
                 $idx = 0
                 foreach ($name in $namesAtDepth) {
                     $display = [string]$mgNodes[$name].Display
-                    $directSubs = if ($subsByParent.ContainsKey($name)) {
+                    $directSubs = if (Test-HashtableKey -Table $subsByParent -Key $name) {
                         @($subsByParent[$name] | Where-Object { $null -ne $_ })
                     } else {
                         @()
@@ -378,7 +395,7 @@ Function Start-ARIDiagramOrganization {
             foreach ($entry in $mgNodes.GetEnumerator()) {
                 $name = $entry.Key
                 $parent = $entry.Value.ParentName
-                if ($parent -and $containerIdByName.ContainsKey($name) -and $containerIdByName.ContainsKey($parent)) {
+                if ((-not [string]::IsNullOrWhiteSpace([string]$parent)) -and (Test-HashtableKey -Table $containerIdByName -Key $name) -and (Test-HashtableKey -Table $containerIdByName -Key $parent)) {
                     Add-Connection $containerIdByName[$parent] $containerIdByName[$name]
                 }
             }
@@ -386,6 +403,9 @@ Function Start-ARIDiagramOrganization {
             $totalSubs = @($OrgObjs).Count
             $plottedSubs = $Script:PlottedSubscriptionIds.Count
             Write-Output ("DrawIOOrgsFile - " + (get-date -Format 'yyyy-MM-dd_HH_mm_ss') + " - Subscription plot summary: total=" + $totalSubs + "; plotted=" + $plottedSubs + "; missing=" + ($totalSubs - $plottedSubs))
+            if ($Script:InvalidChainEntries -gt 0) {
+                Write-Output ("DrawIOOrgsFile - " + (get-date -Format 'yyyy-MM-dd_HH_mm_ss') + " - Warning: skipped " + $Script:InvalidChainEntries + " invalid management group chain node(s) with null/empty name.")
+            }
             return
 
             $Script:1stLevel = @()
