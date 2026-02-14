@@ -186,20 +186,203 @@ Function Start-ARIDiagramOrganization {
 
     Function Start-OrgDiagram {
 
-            $OrgObjs = $ResourceContainers | Where-Object {$_.Type -eq 'microsoft.resources/subscriptions'} 
-            # Normalize ancestor chain ordering per subscription so index-based logic is consistent.
-            # Expected by existing renderer: [0] = closest management group to subscription.
-            foreach ($orgObj in $OrgObjs) {
-                $chain = @($orgObj.properties.managementgroupancestorschain)
+            $OrgObjs = $ResourceContainers | Where-Object {$_.Type -eq 'microsoft.resources/subscriptions'}
+            $Script:PlottedSubscriptionIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+            function New-OrgContainer {
+                param(
+                    [double]$x,[double]$y,[double]$w,[double]$h,[string]$title,[string]$parent,[string]$style
+                )
+                $cid = (-join ((65..90) + (97..122) | Get-Random -Count 20 | ForEach-Object {[char]$_})+'-'+1)
+                $Script:XmlWriter.WriteStartElement('mxCell')
+                $Script:XmlWriter.WriteAttributeString('id', $cid)
+                $Script:XmlWriter.WriteAttributeString('value', $title)
+                $Script:XmlWriter.WriteAttributeString('style', $style)
+                $Script:XmlWriter.WriteAttributeString('vertex', "1")
+                $Script:XmlWriter.WriteAttributeString('parent', $parent)
+                $Script:XmlWriter.WriteStartElement('mxGeometry')
+                $Script:XmlWriter.WriteAttributeString('x', [string]$x)
+                $Script:XmlWriter.WriteAttributeString('y', [string]$y)
+                $Script:XmlWriter.WriteAttributeString('width', [string]$w)
+                $Script:XmlWriter.WriteAttributeString('height', [string]$h)
+                $Script:XmlWriter.WriteAttributeString('as', "geometry")
+                $Script:XmlWriter.WriteEndElement()
+                $Script:XmlWriter.WriteEndElement()
+                return $cid
+            }
+
+            function Get-ChainNormalized {
+                param($SubObj)
+                $chain = @($SubObj.properties.managementgroupancestorschain)
                 if ($chain.Count -gt 1) {
-                    $firstDisplay = [string]$chain[0].displayname
-                    if ($firstDisplay -eq 'tenant root group') {
+                    if (([string]$chain[0].displayname) -eq 'tenant root group') {
                         [array]::Reverse($chain)
-                        $orgObj.properties.managementgroupancestorschain = $chain
+                    }
+                }
+                return $chain
+            }
+
+            $mgNodes = @{}   # key=name -> @{ Name; Display; ParentName }
+            $subsByParent = @{} # key=mgName -> sub objects
+            $rootName = "tenant-root-group"
+            $rootDisplay = "tenant root group"
+            $mgNodes[$rootName] = @{ Name = $rootName; Display = $rootDisplay; ParentName = $null }
+
+            foreach ($sub in $OrgObjs) {
+                $chain = Get-ChainNormalized -SubObj $sub
+                $parentKey = $rootName
+                if ($chain.Count -gt 0) {
+                    for ($i = 0; $i -lt $chain.Count; $i++) {
+                        $nodeName = [string]$chain[$i].name
+                        $nodeDisplay = [string]$chain[$i].displayname
+                        if ([string]::IsNullOrWhiteSpace($nodeName)) {
+                            continue
+                        }
+                        if ([string]::IsNullOrWhiteSpace($nodeDisplay)) {
+                            $nodeDisplay = $nodeName
+                        }
+                        $parentName = if ($i -lt ($chain.Count - 1)) { [string]$chain[$i + 1].name } else { $rootName }
+                        if ([string]::IsNullOrWhiteSpace($parentName)) {
+                            $parentName = $rootName
+                        }
+                        if (-not $mgNodes.ContainsKey($nodeName)) {
+                            $mgNodes[$nodeName] = @{
+                                Name = $nodeName
+                                Display = $nodeDisplay
+                                ParentName = $parentName
+                            }
+                        }
+                    }
+                    $leafName = [string]$chain[0].name
+                    if (-not [string]::IsNullOrWhiteSpace($leafName)) {
+                        $parentKey = $leafName
+                    }
+                }
+                if (-not $subsByParent.ContainsKey($parentKey)) {
+                    $subsByParent[$parentKey] = @()
+                }
+                $subsByParent[$parentKey] += $sub
+            }
+
+            $childrenByParent = @{}
+            foreach ($entry in $mgNodes.GetEnumerator()) {
+                $nodeName = $entry.Key
+                $parentName = $entry.Value.ParentName
+                if ($parentName) {
+                    if (-not $childrenByParent.ContainsKey($parentName)) { $childrenByParent[$parentName] = @() }
+                    if ($childrenByParent[$parentName] -notcontains $nodeName) {
+                        $childrenByParent[$parentName] += $nodeName
                     }
                 }
             }
-            $Script:PlottedSubscriptionIds = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+
+            $depthByName = @{}
+            $queue = New-Object System.Collections.Generic.Queue[string]
+            $queue.Enqueue($rootName)
+            $depthByName[$rootName] = 0
+            while ($queue.Count -gt 0) {
+                $cur = $queue.Dequeue()
+                $nextDepth = [int]$depthByName[$cur] + 1
+                foreach ($child in @($childrenByParent[$cur])) {
+                    if (-not $depthByName.ContainsKey($child)) {
+                        $depthByName[$child] = $nextDepth
+                        $queue.Enqueue($child)
+                    }
+                }
+            }
+
+            $nodesByDepth = @{}
+            foreach ($name in $depthByName.Keys) {
+                $d = [int]$depthByName[$name]
+                if (-not $nodesByDepth.ContainsKey($d)) { $nodesByDepth[$d] = @() }
+                $nodesByDepth[$d] += $name
+            }
+
+            $styleRoot = "swimlane;whiteSpace=wrap;html=1;fillColor=#f5f5f5;fontColor=#333333;strokeColor=#666666;swimlaneFillColor=#F5F5F5;rounded=1;"
+            $styleL1 = "swimlane;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;swimlaneFillColor=#D5E8D4;rounded=1;"
+            $styleL2 = "swimlane;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;swimlaneFillColor=#DAE8FC;rounded=1;"
+            $styleL3 = "swimlane;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;swimlaneFillColor=#FFE6CC;rounded=1;"
+
+            $containerIdByName = @{}
+            $nodeX = @{}
+            $nodeY = @{}
+            $xSpacing = 320
+            $yBase = 300
+            $ySpacing = 280
+
+            $maxDepth = 0
+            foreach ($d in $nodesByDepth.Keys) { if ([int]$d -gt $maxDepth) { $maxDepth = [int]$d } }
+
+            for ($depth = 0; $depth -le $maxDepth; $depth++) {
+                $namesAtDepth = @($nodesByDepth[$depth] | Sort-Object)
+                if ($namesAtDepth.Count -eq 0) { continue }
+                $start = -((($namesAtDepth.Count - 1) * $xSpacing) / 2)
+                $idx = 0
+                foreach ($name in $namesAtDepth) {
+                    $display = [string]$mgNodes[$name].Display
+                    $directSubs = @($subsByParent[$name])
+                    $height = if ($directSubs.Count -gt 0) { (($directSubs.Count * 90) + 50) } else { 80 }
+                    $x = $start + ($idx * $xSpacing)
+                    $y = if ($depth -eq 0) { 0 } else { $yBase + (($depth - 1) * $ySpacing) }
+                    $style = if ($depth -eq 0) { $styleRoot } elseif ($depth -eq 1) { $styleL1 } elseif ($depth -eq 2) { $styleL2 } else { $styleL3 }
+                    $cid = New-OrgContainer -x $x -y $y -w 200 -h $height -title $display -parent "1" -style $style
+                    $containerIdByName[$name] = $cid
+                    $nodeX[$name] = $x
+                    $nodeY[$name] = $y
+
+                    $Script:XmlWriter.WriteStartElement('object')
+                    $Script:XmlWriter.WriteAttributeString('label', '')
+                    $Script:XmlWriter.WriteAttributeString('ManagementGroup', $display)
+                    $Script:XmlWriter.WriteAttributeString('id', ($Script:CellID+'-'+($Script:IDNum++)))
+                    if ($directSubs.Count -gt 0) {
+                        Add-Icon $Script:IconMgmtGroup '-30' ($height-15) '50' '50' $cid
+                    } else {
+                        Add-Icon $Script:IconMgmtGroup '75' '27' '50' '50' $cid
+                    }
+                    $Script:XmlWriter.WriteEndElement()
+
+                    $localTop = 50
+                    $localLeft = 25
+                    foreach ($sub in ($directSubs | Sort-Object Name)) {
+                        if ($sub.subscriptionid) { [void]$Script:PlottedSubscriptionIds.Add([string]$sub.subscriptionid) }
+                        $RGs = $ResourceContainers | Where-Object {$_.Type -eq 'microsoft.resources/subscriptions/resourcegroups' -and $_.subscriptionid -eq $sub.subscriptionid}
+                        $subStyle = if ($depth -le 1) { $Ret1 } elseif ($depth -eq 2) { $Ret2 } elseif ($depth -eq 3) { $Ret3 } else { $Ret4 }
+
+                        $Script:XmlWriter.WriteStartElement('object')
+                        $Script:XmlWriter.WriteAttributeString('label', $sub.name)
+                        $Script:XmlWriter.WriteAttributeString('id', ($Script:CellIDRes+'-'+($Script:CelNum++)))
+                        Add-Icon $subStyle $localLeft $localTop '150' '70' $cid
+                        $Script:XmlWriter.WriteEndElement()
+
+                        $Script:XmlWriter.WriteStartElement('object')
+                        $Script:XmlWriter.WriteAttributeString('label', '')
+                        $RGNum = 1
+                        foreach($RG in $RGs) {
+                            $Attr = ('ResourceGroup_'+[string]$RGNum)
+                            $Script:XmlWriter.WriteAttributeString($Attr, [string]$RG.Name)
+                            $RGNum++
+                        }
+                        $Script:XmlWriter.WriteAttributeString('id', ($Script:CellID+'-'+($Script:IDNum++)))
+                        Add-Icon $Script:IconSubscription ($localLeft+140) ($localTop+40) '31' '51' $cid
+                        $Script:XmlWriter.WriteEndElement()
+                        $localTop = $localTop + 90
+                    }
+                    $idx++
+                }
+            }
+
+            foreach ($entry in $mgNodes.GetEnumerator()) {
+                $name = $entry.Key
+                $parent = $entry.Value.ParentName
+                if ($parent -and $containerIdByName.ContainsKey($name) -and $containerIdByName.ContainsKey($parent)) {
+                    Add-Connection $containerIdByName[$parent] $containerIdByName[$name]
+                }
+            }
+
+            $totalSubs = @($OrgObjs).Count
+            $plottedSubs = $Script:PlottedSubscriptionIds.Count
+            Write-Output ("DrawIOOrgsFile - " + (get-date -Format 'yyyy-MM-dd_HH_mm_ss') + " - Subscription plot summary: total=" + $totalSubs + "; plotted=" + $plottedSubs + "; missing=" + ($totalSubs - $plottedSubs))
+            return
 
             $Script:1stLevel = @()
             $Lvl2 = @()
