@@ -153,7 +153,27 @@ function Start-ARIDrawIODiagram {
 
     ('DrawIOCoreFile - '+(get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - Waiting for Jobs') | Out-File -FilePath $LogFile -Append 
 
-    (Get-Job | Where-Object {$_.name -like 'Diagram_*'}) | Wait-Job
+    $DiagramJobs = (Get-Job | Where-Object {$_.name -like 'Diagram_*'})
+    $DiagramJobs | Wait-Job
+
+    $failedJobs = @($DiagramJobs | Where-Object { $_.State -in @('Failed','Stopped') })
+    if ($failedJobs.Count -gt 0) {
+        $failedList = ($failedJobs | ForEach-Object { "$($_.Name)[$($_.State)]" }) -join ', '
+        ('DrawIOCoreFile - '+(get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - Error: One or more diagram jobs failed: ' + $failedList) | Out-File -FilePath $LogFile -Append
+        throw "Diagram job failure detected: $failedList"
+    }
+
+    foreach ($RequiredXml in $XMLFiles) {
+        if (-not (Test-Path -Path $RequiredXml)) {
+            ('DrawIOCoreFile - '+(get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - Error: Required XML segment missing: ' + $RequiredXml) | Out-File -FilePath $LogFile -Append
+            throw "Required XML segment missing: $RequiredXml"
+        }
+        $r = Get-Item -Path $RequiredXml -ErrorAction Stop
+        if ($r.Length -le 0) {
+            ('DrawIOCoreFile - '+(get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - Error: Required XML segment empty: ' + $RequiredXml) | Out-File -FilePath $LogFile -Append
+            throw "Required XML segment empty: $RequiredXml"
+        }
+    }
 
     ('DrawIOCoreFile - '+(get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - Merging XML Files') | Out-File -FilePath $LogFile -Append 
     Set-ARIDiagramFile -XMLFiles $XMLFiles -DDFile $DDFile -LogFile $LogFile

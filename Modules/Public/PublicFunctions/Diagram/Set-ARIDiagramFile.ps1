@@ -22,6 +22,20 @@ function Set-ARIDiagramFile {
     try 
     {
         ('DrawIOFileJob - '+(get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - Merging XML Files ') | Out-File -FilePath $LogFile -Append 
+        foreach ($RequiredFile in $XMLFiles) {
+            if (-not (Test-Path -Path $RequiredFile)) {
+                throw "Required diagram segment file is missing: $RequiredFile"
+            }
+            $f = Get-Item -Path $RequiredFile -ErrorAction Stop
+            if ($f.Length -le 0) {
+                throw "Required diagram segment file is empty: $RequiredFile"
+            }
+        }
+
+        if (-not (Test-Path -Path $DDFile)) {
+            throw "Base diagram file not found: $DDFile"
+        }
+
         foreach($File in $XMLFiles)
         {
             $oldxml = New-Object XML
@@ -38,9 +52,17 @@ function Set-ARIDiagramFile {
 
             Start-Sleep -Milliseconds 200
         }
+
+        $finalXml = New-Object XML
+        $finalXml.Load($DDFile)
+        $orgPage = $finalXml.SelectSingleNode("//diagram[@name='Organization']")
+        if ($null -eq $orgPage) {
+            throw "Merged diagram file is missing Organization page: $DDFile"
+        }
     }
     catch
     {
-        ('DrawIOFileJob - '+(get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - Error: ' + $_.Exception.Message) | Out-File -FilePath $LogFile -Append 
+        ('DrawIOFileJob - '+(get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - Error: ' + $_.Exception.Message) | Out-File -FilePath $LogFile -Append
+        throw
     }
 }
