@@ -62,6 +62,7 @@ function Start-ARIDrawIODiagram {
             catch
             {
                 ('DrawIOCoreFile - '+(get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - Error: ' + $_.Exception.Message) | Out-File -FilePath $($args[3]) -Append
+                throw
             }
         } -ArgumentList $Subscriptions, $Resources, $DiagramCache, $Logfile | Out-Null
     }
@@ -77,6 +78,7 @@ function Start-ARIDrawIODiagram {
             catch
                 {
                     ('DrawIOCoreFile - '+(get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - Error: ' + $_.Exception.Message) | Out-File -FilePath $($args[3]) -Append
+                    throw
                 }
         } -ArgumentList $Subscriptions, $Resources, $DiagramCache, $Logfile, $ARIModule
     }
@@ -93,6 +95,7 @@ function Start-ARIDrawIODiagram {
             catch
             {
                 ('DrawIOCoreFile - '+(get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - Error: ' + $_.Exception.Message) | Out-File -FilePath $($args[2]) -Append
+                throw
             }
         } -ArgumentList $ResourceContainers, $DiagramCache, $Logfile | Out-Null
     }
@@ -108,6 +111,7 @@ function Start-ARIDrawIODiagram {
             catch
             {
                 ('DrawIOCoreFile - '+(get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - Error: ' + $_.Exception.Message) | Out-File -FilePath $($args[2]) -Append
+                throw
             }
         } -ArgumentList $ResourceContainers, $DiagramCache, $Logfile, $ARIModule
     }
@@ -132,6 +136,7 @@ function Start-ARIDrawIODiagram {
             catch
             {
                 ('DrawIOCoreFile - '+(get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - Error: ' + $_.Exception.Message) | Out-File -FilePath $($args[7]) -Append
+                throw
             }
         } -ArgumentList $Subscriptions, $Job, $Advisories, $DiagramCache, $FullEnvironment, $DDFile, $XMLFiles, $Logfile, $Automation | Out-Null
     }
@@ -147,6 +152,7 @@ function Start-ARIDrawIODiagram {
             catch
             {
                 ('DrawIOCoreFile - '+(get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - Error: ' + $_.Exception.Message) | Out-File -FilePath $($args[7]) -Append
+                throw
             }
         } -ArgumentList $Subscriptions, $Job, $Advisories, $DiagramCache, $FullEnvironment, $DDFile, $XMLFiles, $Logfile, $Automation, $ARIModule
     }
