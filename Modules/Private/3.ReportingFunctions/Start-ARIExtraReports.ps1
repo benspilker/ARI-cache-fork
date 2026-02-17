@@ -20,6 +20,14 @@ Authors: Claudio Merola
 function Start-ARIExtraReports {
     Param($File, $Quotas, $SecurityCenter, $SkipPolicy, $SkipAdvisory, $IncludeCosts, $TableStyle, $Advisories, $IncludePresidioPolicy)
 
+    function Test-KeyOrProperty {
+        param($Obj, [string]$Name)
+        if ($null -eq $Obj -or [string]::IsNullOrWhiteSpace($Name)) { return $false }
+        if ($Obj -is [PSCustomObject] -and $Obj.PSObject.Properties.Name -contains $Name) { return $true }
+        if (($Obj -is [System.Collections.Hashtable] -or $Obj -is [System.Collections.IDictionary]) -and $Obj.ContainsKey($Name)) { return $true }
+        return $false
+    }
+
     Write-Progress -activity 'Azure Inventory' -Status "70% Complete." -PercentComplete 70 -CurrentOperation "Reporting Extra Resources.."
 
     <################################################ QUOTAS #######################################################>
@@ -528,11 +536,11 @@ function Start-ARIExtraReports {
                                         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found merged PolicyBatch.json - loading PolicyDef/PolicySetDef')
                                         $mergedBatchData = Get-Content $mergedPolicyBatchFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
                                         if ($mergedBatchData -is [PSCustomObject] -or $mergedBatchData -is [System.Collections.Hashtable]) {
-                                            if ($mergedBatchData.PSObject.Properties.Name -contains 'PolicyDef' -or $mergedBatchData.ContainsKey('PolicyDef')) {
+                                            if (Test-KeyOrProperty $mergedBatchData 'PolicyDef') {
                                                 $defs = if ($mergedBatchData -is [PSCustomObject]) { $mergedBatchData.PolicyDef } else { $mergedBatchData['PolicyDef'] }
                                                 if ($defs -is [System.Array]) { $batchPolicyDefs += $defs } elseif ($null -ne $defs) { $batchPolicyDefs += @($defs) }
                                             }
-                                            if ($mergedBatchData.PSObject.Properties.Name -contains 'PolicySetDef' -or $mergedBatchData.ContainsKey('PolicySetDef')) {
+                                            if (Test-KeyOrProperty $mergedBatchData 'PolicySetDef') {
                                                 $setDefs = if ($mergedBatchData -is [PSCustomObject]) { $mergedBatchData.PolicySetDef } else { $mergedBatchData['PolicySetDef'] }
                                                 if ($setDefs -is [System.Array]) { $batchPolicySetDefs += $setDefs } elseif ($null -ne $setDefs) { $batchPolicySetDefs += @($setDefs) }
                                             }
@@ -552,11 +560,11 @@ function Start-ARIExtraReports {
                                             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found PolicyBatch.json in ' + $batchDir.Name + ' - loading PolicyDef/PolicySetDef')
                                             $batchData = Get-Content $batchPolicyBatchFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
                                             if ($batchData -is [PSCustomObject] -or $batchData -is [System.Collections.Hashtable]) {
-                                                if ($batchData.PSObject.Properties.Name -contains 'PolicyDef' -or $batchData.ContainsKey('PolicyDef')) {
+                                                if (Test-KeyOrProperty $batchData 'PolicyDef') {
                                                     $defs = if ($batchData -is [PSCustomObject]) { $batchData.PolicyDef } else { $batchData['PolicyDef'] }
                                                     if ($defs -is [System.Array]) { $batchPolicyDefs += $defs } elseif ($null -ne $defs) { $batchPolicyDefs += @($defs) }
                                                 }
-                                                if ($batchData.PSObject.Properties.Name -contains 'PolicySetDef' -or $batchData.ContainsKey('PolicySetDef')) {
+                                                if (Test-KeyOrProperty $batchData 'PolicySetDef') {
                                                     $setDefs = if ($batchData -is [PSCustomObject]) { $batchData.PolicySetDef } else { $batchData['PolicySetDef'] }
                                                     if ($setDefs -is [System.Array]) { $batchPolicySetDefs += $setDefs } elseif ($null -ne $setDefs) { $batchPolicySetDefs += @($setDefs) }
                                                 }
@@ -575,11 +583,11 @@ function Start-ARIExtraReports {
                                         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found PolicyBatch.json in same directory as Policy.json - loading PolicyDef/PolicySetDef')
                                         $sameDirBatchData = Get-Content $sameDirPolicyBatchFile -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
                                         if ($sameDirBatchData -is [PSCustomObject] -or $sameDirBatchData -is [System.Collections.Hashtable]) {
-                                            if ($sameDirBatchData.PSObject.Properties.Name -contains 'PolicyDef' -or $sameDirBatchData.ContainsKey('PolicyDef')) {
+                                            if (Test-KeyOrProperty $sameDirBatchData 'PolicyDef') {
                                                 $defs = if ($sameDirBatchData -is [PSCustomObject]) { $sameDirBatchData.PolicyDef } else { $sameDirBatchData['PolicyDef'] }
                                                 if ($defs -is [System.Array]) { $batchPolicyDefs += $defs } elseif ($null -ne $defs) { $batchPolicyDefs += @($defs) }
                                             }
-                                            if ($sameDirBatchData.PSObject.Properties.Name -contains 'PolicySetDef' -or $sameDirBatchData.ContainsKey('PolicySetDef')) {
+                                            if (Test-KeyOrProperty $sameDirBatchData 'PolicySetDef') {
                                                 $setDefs = if ($sameDirBatchData -is [PSCustomObject]) { $sameDirBatchData.PolicySetDef } else { $sameDirBatchData['PolicySetDef'] }
                                                 if ($setDefs -is [System.Array]) { $batchPolicySetDefs += $setDefs } elseif ($null -ne $setDefs) { $batchPolicySetDefs += @($setDefs) }
                                             }
@@ -622,7 +630,7 @@ function Start-ARIExtraReports {
                                 $PolicyAssignRaw = @{ policyAssignments = $PolicyAssignRaw }
                             } elseif ($PolicyAssignRaw -is [PSCustomObject] -or $PolicyAssignRaw -is [System.Collections.Hashtable]) {
                                 # Already has structure, check for policyAssignments property
-                                if (-not ($PolicyAssignRaw.policyAssignments -or $PolicyAssignRaw.ContainsKey('policyAssignments'))) {
+                                if (-not ($PolicyAssignRaw.policyAssignments -or (Test-KeyOrProperty $PolicyAssignRaw 'policyAssignments'))) {
                                     # Convert to hashtable with policyAssignments property
                                     $PolicyAssignRaw = @{ policyAssignments = @() }
                                 }
