@@ -28,7 +28,19 @@ function Build-ARIInitialBlock {
     $ProcessingTime = if($ProcessingRunTime.Elapsed.Totalminutes -lt 1){($ProcessingRunTime.Elapsed.Seconds.ToString()+' Seconds')}else{($ProcessingRunTime.Elapsed.Totalminutes.ToString('#######.##')+' Minutes')}
     $ReportTime = if($ReportingRunTime.Elapsed.Totalminutes -lt 1){($ReportingRunTime.Elapsed.Seconds.ToString()+' Seconds')}else{($ReportingRunTime.Elapsed.Totalminutes.ToString('#######.##')+' Minutes')}
 
-    $User = (Get-AzContext -WarningAction SilentlyContinue -InformationAction SilentlyContinue -Debug:$false | Select-Object -Property Account -Unique).Account.Id
+    $AzCtx = Get-AzContext -WarningAction SilentlyContinue -InformationAction SilentlyContinue -Debug:$false
+    $User = ($AzCtx | Select-Object -Property Account -Unique).Account.Id
+    $Tenant = $null
+    if ($null -ne $AzCtx) {
+        if ($null -ne $AzCtx.Tenant -and $null -ne $AzCtx.Tenant.Id -and -not [string]::IsNullOrWhiteSpace($AzCtx.Tenant.Id)) {
+            $Tenant = $AzCtx.Tenant.Id
+        } elseif ($null -ne $AzCtx.Subscription -and $null -ne $AzCtx.Subscription.TenantId -and -not [string]::IsNullOrWhiteSpace($AzCtx.Subscription.TenantId)) {
+            $Tenant = $AzCtx.Subscription.TenantId
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($Tenant)) {
+        $Tenant = 'N/A'
+    }
 
     $WS = $Excel.Workbook.Worksheets | Where-Object { $_.Name -eq 'Overview' } | Select-Object -First 1
     if ($null -eq $WS) {
@@ -104,7 +116,7 @@ function Build-ARIInitialBlock {
     $TabDraw.TextAlignment = 'Center'
 
     $Draw = $WS.Drawings.AddShape('ARI', 'RoundRect')
-    $Draw.SetSize(445, 240)
+    $Draw.SetSize(445, 270)
     $Draw.SetPosition(1, 0, 2, 5)
 
     $txt = $Draw.RichText.Add('Azure Resource Inventory ' + $ScriptVersion + "`n")
@@ -152,6 +164,16 @@ function Build-ARIInitialBlock {
     $txt.ComplexFont = $Font
     $txt.LatinFont = $Font
 
+    $txt = $Draw.RichText.Add('Tenant ID: ')
+    $txt.Size = 11
+    $txt.ComplexFont = $Font
+    $txt.LatinFont = $Font
+
+    $txt = $Draw.RichText.Add($Tenant + "`n")
+    $txt.Size = 12
+    $txt.ComplexFont = $Font
+    $txt.LatinFont = $Font
+
     $txt = $Draw.RichText.Add('Environment: ')
     $txt.Size = 11
     $txt.ComplexFont = $Font
@@ -161,6 +183,10 @@ function Build-ARIInitialBlock {
     $txt.Size = 12
     $txt.ComplexFont = $Font
     $txt.LatinFont = $Font
+
+    # Persist Tenant ID in worksheet cells so downstream parsers (pandas/openpyxl) can read it reliably.
+    $WS.Cells['A1'].Value = 'Tenant ID'
+    $WS.Cells['B1'].Value = $Tenant
 
     $Draw.TextAlignment = 'Center'
 
