@@ -476,7 +476,38 @@ function Start-ARIExtraReports {
                                 throw "Policy cache data not available (Policy.json missing and split data not loaded)"
                             }
                         }
-                        # Get Subscriptions from script scope or parameter
+                        # Get Subscriptions from script scope/variable/env and normalize to expected object shape.
+                        function Convert-ToPolicySubsArray {
+                            param($InputObject)
+                            if ($null -eq $InputObject) { return @() }
+                            $items = if ($InputObject -is [System.Array]) { $InputObject } else { @($InputObject) }
+                            $result = @()
+                            foreach ($it in $items) {
+                                if ($null -eq $it) { continue }
+                                $sid = $null
+                                if ($it -is [string]) {
+                                    $sid = $it.Trim()
+                                } elseif (Test-KeyOrProperty -Obj $it -Name 'id') {
+                                    $sid = "$($it.id)".Trim()
+                                } elseif (Test-KeyOrProperty -Obj $it -Name 'SubscriptionId') {
+                                    $sid = "$($it.SubscriptionId)".Trim()
+                                } elseif (Test-KeyOrProperty -Obj $it -Name 'Id') {
+                                    $sid = "$($it.Id)".Trim()
+                                }
+                                if (-not [string]::IsNullOrWhiteSpace($sid)) {
+                                    $result += [PSCustomObject]@{
+                                        id = $sid
+                                        Name = $sid
+                                        SubscriptionId = $sid
+                                    }
+                                }
+                            }
+                            if ($result.Count -gt 0) {
+                                return @($result | Group-Object -Property id | ForEach-Object { $_.Group[0] })
+                            }
+                            return @()
+                        }
+
                         $SubsForPolicy = $null
                         try {
                             $subsVar = Get-Variable -Name 'Subscriptions' -Scope 'Script' -ErrorAction SilentlyContinue
@@ -489,12 +520,23 @@ function Start-ARIExtraReports {
                                 $SubsForPolicy = $Subscriptions
                             }
                         }
+                        # Also try function/global parameter path when no script-scope value exists.
+                        if ($null -eq $SubsForPolicy -and $null -ne $Subscriptions) {
+                            $SubsForPolicy = $Subscriptions
+                        }
                         
-                        # Ensure Subscriptions is an array
-                        if ($null -eq $SubsForPolicy) {
-                            $SubsForPolicy = @()
-                        } elseif ($SubsForPolicy -isnot [System.Array]) {
-                            $SubsForPolicy = @($SubsForPolicy)
+                        $SubsForPolicy = Convert-ToPolicySubsArray -InputObject $SubsForPolicy
+
+                        # Fallback: read subscription IDs from environment when module/script scopes do not carry over.
+                        if ($SubsForPolicy.Count -eq 0) {
+                            $envSubIds = $env:ARI_SUBSCRIPTION_IDS
+                            if ($envSubIds) {
+                                $parsedIds = @($envSubIds -split ',' | ForEach-Object { "$_".Trim() } | Where-Object { $_ })
+                                if ($parsedIds.Count -gt 0) {
+                                    $SubsForPolicy = Convert-ToPolicySubsArray -InputObject $parsedIds
+                                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Loaded Subscriptions fallback from ARI_SUBSCRIPTION_IDS env var: Count=' + $SubsForPolicy.Count)
+                                }
+                            }
                         }
                         
                         # Extract raw Policy data (safe defaults if properties missing)
