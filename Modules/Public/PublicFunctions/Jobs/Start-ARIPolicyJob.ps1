@@ -20,6 +20,49 @@ Authors: Claudio Merola
 function Start-ARIPolicyJob {
     param($Subscriptions, $PolicySetDef, $PolicyAssign, $PolicyDef)
 
+    function Convert-ToPolicyAssignmentArray {
+        param($InputObject)
+
+        if ($null -eq $InputObject) { return @() }
+
+        if ($InputObject -is [System.Array]) {
+            return @($InputObject)
+        }
+
+        if ($InputObject -is [PSCustomObject] -or $InputObject -is [System.Collections.Hashtable] -or $InputObject -is [System.Collections.IDictionary]) {
+            $hasKey = {
+                param($obj, [string]$name)
+                if ($obj -is [PSCustomObject]) { return ($obj.PSObject.Properties.Name -contains $name) }
+                if ($obj -is [System.Collections.Hashtable] -or $obj -is [System.Collections.IDictionary]) { return $obj.ContainsKey($name) }
+                return $false
+            }
+            $getVal = {
+                param($obj, [string]$name)
+                if ($obj -is [PSCustomObject]) { return $obj.$name }
+                if ($obj -is [System.Collections.Hashtable] -or $obj -is [System.Collections.IDictionary]) { return $obj[$name] }
+                return $null
+            }
+
+            foreach ($candidateKey in @('policyAssignments', 'value', 'items', 'data')) {
+                if (& $hasKey $InputObject $candidateKey) {
+                    $candidateValue = & $getVal $InputObject $candidateKey
+                    if ($null -ne $candidateValue) {
+                        return @(Convert-ToPolicyAssignmentArray -InputObject $candidateValue)
+                    }
+                }
+            }
+
+            # Treat as a single assignment object if it looks like one.
+            foreach ($assignmentKey in @('policyDefinitions', 'policySetDefinitionId', 'results', 'scope', 'displayName')) {
+                if (& $hasKey $InputObject $assignmentKey) {
+                    return @($InputObject)
+                }
+            }
+        }
+
+        return @($InputObject)
+    }
+
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Starting with PolicyDef count: ' + $(if ($null -eq $PolicyDef) { 'null' } elseif ($PolicyDef -is [System.Array]) { $PolicyDef.Count } else { '1 (not array)' }))
     
     # Ensure PolicyDef is an array for safe iteration
@@ -115,21 +158,9 @@ function Start-ARIPolicyJob {
         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: WARNING - poltmp is empty! PolicyDef count: ' + $PolicyDef.Count)
     }
 
-    # Safely access PolicyAssign.policyAssignments
-    $policyAssignments = @()
-    if ($null -ne $PolicyAssign) {
-        if ($PolicyAssign -is [PSCustomObject] -or $PolicyAssign -is [System.Collections.Hashtable]) {
-            if ($null -ne $PolicyAssign.policyAssignments) {
-                $policyAssignments = if ($PolicyAssign.policyAssignments -is [System.Array]) { 
-                    $PolicyAssign.policyAssignments 
-                } else { 
-                    @($PolicyAssign.policyAssignments) 
-                }
-            }
-        } elseif ($PolicyAssign -is [System.Array]) {
-            $policyAssignments = $PolicyAssign
-        }
-    }
+    # Normalize PolicyAssign to robustly support policyAssignments/value/items/data wrappers.
+    $policyAssignments = @(Convert-ToPolicyAssignmentArray -InputObject $PolicyAssign)
+    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob: Normalized policy assignments count: ' + $policyAssignments.Count)
 
     # Ensure PolicySetDef is an array for safe iteration
     if ($null -eq $PolicySetDef) {

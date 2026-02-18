@@ -671,10 +671,28 @@ function Start-ARIExtraReports {
                                 # Direct array - wrap in hashtable with policyAssignments property
                                 $PolicyAssignRaw = @{ policyAssignments = $PolicyAssignRaw }
                             } elseif ($PolicyAssignRaw -is [PSCustomObject] -or $PolicyAssignRaw -is [System.Collections.Hashtable]) {
-                                # Already has structure, check for policyAssignments property
-                                if (-not ($PolicyAssignRaw.policyAssignments -or (Test-KeyOrProperty $PolicyAssignRaw 'policyAssignments'))) {
-                                    # Convert to hashtable with policyAssignments property
-                                    $PolicyAssignRaw = @{ policyAssignments = @() }
+                                # Already has structure; map known wrappers to policyAssignments.
+                                if (-not (Test-KeyOrProperty $PolicyAssignRaw 'policyAssignments')) {
+                                    if (Test-KeyOrProperty $PolicyAssignRaw 'value') {
+                                        $val = if ($PolicyAssignRaw -is [PSCustomObject]) { $PolicyAssignRaw.value } else { $PolicyAssignRaw['value'] }
+                                        $PolicyAssignRaw = @{ policyAssignments = @($val) }
+                                    } elseif (Test-KeyOrProperty $PolicyAssignRaw 'items') {
+                                        $val = if ($PolicyAssignRaw -is [PSCustomObject]) { $PolicyAssignRaw.items } else { $PolicyAssignRaw['items'] }
+                                        $PolicyAssignRaw = @{ policyAssignments = @($val) }
+                                    } elseif (Test-KeyOrProperty $PolicyAssignRaw 'data') {
+                                        $val = if ($PolicyAssignRaw -is [PSCustomObject]) { $PolicyAssignRaw.data } else { $PolicyAssignRaw['data'] }
+                                        $PolicyAssignRaw = @{ policyAssignments = @($val) }
+                                    } elseif (
+                                        (Test-KeyOrProperty $PolicyAssignRaw 'policyDefinitions') -or
+                                        (Test-KeyOrProperty $PolicyAssignRaw 'policySetDefinitionId') -or
+                                        (Test-KeyOrProperty $PolicyAssignRaw 'results')
+                                    ) {
+                                        # Single assignment object.
+                                        $PolicyAssignRaw = @{ policyAssignments = @($PolicyAssignRaw) }
+                                    } else {
+                                        # Unknown shape: keep safe fallback.
+                                        $PolicyAssignRaw = @{ policyAssignments = @() }
+                                    }
                                 }
                             } else {
                                 # Single value - wrap in hashtable
