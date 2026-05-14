@@ -5,7 +5,6 @@ Platform: Windows / Linux / Mac
 Tags: PowerShell, Azure, Inventory, Excel Report, Customer Engineer
 ---
 
-#
 <div align="center">
 
 # Azure Resource Inventory (ARI)
