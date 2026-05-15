@@ -72,7 +72,8 @@ function Start-ARIProcessJob {
     $TotalFolders = $ModuleFolders.count
 
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Converting Resource data to JSON for Jobs')
-    $NewResources = ($Resources | ConvertTo-Json -Depth 40 -Compress)
+    $ResourcesJsonPath = Join-Path $DefaultPath ("ari-resources-" + [guid]::NewGuid().ToString("N") + ".json")
+    $Resources | ConvertTo-Json -Depth 40 -Compress | Set-Content -Path $ResourcesJsonPath -Encoding UTF8
 
     Remove-Variable -Name Resources
     Clear-ARIMemory
@@ -92,12 +93,78 @@ function Start-ARIProcessJob {
             $c = [math]::Round($c)
             Write-Progress -Id 1 -activity "Creating Jobs" -Status "$c% Complete." -PercentComplete $c
 
+            $JobResourcesPayloadPath = $ResourcesJsonPath
+            # ARI_AI_RESOURCE_SCOPE_V2: pass AI-relevant resources with robust type matching.
+            if ($ModuleName -eq 'AI') {
+                $aiResourceTypePrefixes = @(
+                    'microsoft.cognitiveservices/accounts',
+                    'microsoft.machinelearningservices/workspaces',
+                    'microsoft.search/searchservices'
+                )
+                $aiProviderPrefixes = @(
+                    'microsoft.cognitiveservices/',
+                    'microsoft.machinelearningservices/',
+                    'microsoft.search/'
+                )
+                $aiResourcesPayloadPath = Join-Path $DefaultPath ("ari-resources-ai-" + [guid]::NewGuid().ToString("N") + ".json")
+                try {
+                    $aiResourcesRaw = Get-Content -Path $ResourcesJsonPath -Raw -ErrorAction Stop | ConvertFrom-Json
+                    $allResources = @($aiResourcesRaw)
+                    $aiResources = @($allResources | Where-Object {
+                        $rtype = ''
+                        try {
+                            if ($_.PSObject.Properties['type']) { $rtype = [string]$_.type }
+                            elseif ($_.PSObject.Properties['TYPE']) { $rtype = [string]$_.TYPE }
+                            elseif ($_.PSObject.Properties['resourceType']) { $rtype = [string]$_.resourceType }
+                            elseif ($_.PSObject.Properties['ResourceType']) { $rtype = [string]$_.ResourceType }
+                        } catch {}
+                        if ([string]::IsNullOrWhiteSpace($rtype)) { return $false }
+                        $rtypeNormalized = $rtype.Trim().ToLowerInvariant()
+                        foreach ($prefix in $aiResourceTypePrefixes) {
+                            if ($rtypeNormalized -eq $prefix -or $rtypeNormalized.StartsWith($prefix + '/')) {
+                                return $true
+                            }
+                        }
+                        return $false
+                    })
+
+                    if ($aiResources.Count -eq 0 -and $allResources.Count -gt 0) {
+                        $providerMatches = @($allResources | Where-Object {
+                            $rtype = ''
+                            try {
+                                if ($_.PSObject.Properties['type']) { $rtype = [string]$_.type }
+                                elseif ($_.PSObject.Properties['TYPE']) { $rtype = [string]$_.TYPE }
+                                elseif ($_.PSObject.Properties['resourceType']) { $rtype = [string]$_.resourceType }
+                                elseif ($_.PSObject.Properties['ResourceType']) { $rtype = [string]$_.ResourceType }
+                            } catch {}
+                            if ([string]::IsNullOrWhiteSpace($rtype)) { return $false }
+                            $rtypeNormalized = $rtype.Trim().ToLowerInvariant()
+                            foreach ($providerPrefix in $aiProviderPrefixes) {
+                                if ($rtypeNormalized.StartsWith($providerPrefix)) { return $true }
+                            }
+                            return $false
+                        })
+                        if ($providerMatches.Count -gt 0) {
+                            $aiResources = $providerMatches
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[PATCHED] AI scope fallback used provider-prefix matches: '+$($aiResources.Count)+' item(s)')
+                        }
+                    }
+
+                    $aiResources | ConvertTo-Json -Depth 20 -Compress | Set-Content -Path $aiResourcesPayloadPath -Encoding UTF8
+                    $JobResourcesPayloadPath = $aiResourcesPayloadPath
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[PATCHED] AI resource scope applied: '+$($aiResources.Count)+' item(s) from total '+$($allResources.Count))
+                } catch {
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[PATCHED] AI resource scope fallback to full payload due to error: '+$_.Exception.Message)
+                    $JobResourcesPayloadPath = $ResourcesJsonPath
+                }
+            }
+
             Start-Job -Name ('ResourceJob_'+$ModuleName) -ScriptBlock {
 
                 $ModuleFiles = $($args[0])
                 $Subscriptions = $($args[2])
                 $InTag = $($args[3])
-                $Resources = $($args[4]) | ConvertFrom-Json
+                $Resources = Get-Content -Path $($args[4]) -Raw -ErrorAction Stop | ConvertFrom-Json
                 $Retirements = $($args[5])
                 $Task = $($args[6])
                 $Unsupported = $($args[10])
@@ -153,7 +220,7 @@ function Start-ARIProcessJob {
 
                 $Hashtable
 
-            } -ArgumentList $ModuleFiles, $PSScriptRoot, $Subscriptions, $InTag, $NewResources , $Retirements, 'Processing', $null, $null, $null, $Unsupported | Out-Null
+            } -ArgumentList $ModuleFiles, $PSScriptRoot, $Subscriptions, $InTag, $JobResourcesPayloadPath , $Retirements, 'Processing', $null, $null, $null, $Unsupported | Out-Null
 
         if($JobLoop -eq $EnvSizeLooper)
             {
@@ -196,6 +263,12 @@ function Start-ARIProcessJob {
 
         }
 
-        Remove-Variable -Name NewResources
+        if (Test-Path -LiteralPath $ResourcesJsonPath) {
+            Remove-Item -LiteralPath $ResourcesJsonPath -Force -ErrorAction SilentlyContinue
+        }
+        Remove-Variable -Name ResourcesJsonPath -ErrorAction SilentlyContinue
+        Get-ChildItem -Path $DefaultPath -Filter 'ari-resources-ai-*.json' -File -ErrorAction SilentlyContinue | ForEach-Object {
+            Remove-Item -LiteralPath $_.FullName -Force -ErrorAction SilentlyContinue
+        }
         Clear-ARIMemory
 }

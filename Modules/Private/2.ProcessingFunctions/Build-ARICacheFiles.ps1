@@ -80,6 +80,14 @@ function Build-ARICacheFiles {
                     [System.GC]::WaitForPendingFinalizers()
                     [System.GC]::Collect()
                 }
+            elseif ($NewJobName -eq 'AI')
+                {
+                    # Always emit deterministic AI.json even when there are no AI rows.
+                    $JobJSONName = ($NewJobName+'.json')
+                    $JobFileName = Join-Path $DefaultPath 'ReportCache' $JobJSONName
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Creating empty AI cache file: '+ $JobFileName)
+                    '[]' | Set-Content -Path $JobFileName -Encoding UTF8
+                }
             Remove-Job -Name $Job
             Remove-Variable -Name TempJob -ErrorAction SilentlyContinue
 
