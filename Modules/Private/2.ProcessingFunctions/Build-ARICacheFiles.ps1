@@ -20,6 +20,24 @@ Authors: Claudio Merola
 function Build-ARICacheFiles {
     Param($DefaultPath, $JobNames)
 
+    function Write-ARICacheMemoryCheckpoint {
+        param(
+            [string]$Stage,
+            [string]$ModuleName = ''
+        )
+        try {
+            $proc = Get-Process -Id $PID -ErrorAction Stop
+            $wsMb = [math]::Round(($proc.WorkingSet64 / 1MB), 2)
+            $privateMb = [math]::Round(($proc.PrivateMemorySize64 / 1MB), 2)
+            $virtualMb = [math]::Round(($proc.VirtualMemorySize64 / 1MB), 2)
+            $moduleSuffix = if ([string]::IsNullOrWhiteSpace($ModuleName)) { '' } else { " module=$ModuleName" }
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss') + ' - ' + "[MEMCHK] stage=$Stage$moduleSuffix ws_mb=$wsMb private_mb=$privateMb virtual_mb=$virtualMb")
+        } catch {
+            $moduleSuffix = if ([string]::IsNullOrWhiteSpace($ModuleName)) { '' } else { " module=$ModuleName" }
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss') + ' - ' + "[MEMCHK] stage=$Stage$moduleSuffix failed=$($_.Exception.Message)")
+        }
+    }
+
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Checking Cache Folder.')
 
     # Ensure JobNames is always an array for safe .Count access
@@ -38,7 +56,9 @@ function Build-ARICacheFiles {
             Write-Progress -Id 1 -activity "Building Cache Files" -Status "$c% Complete." -PercentComplete $c
 
             $NewJobName = ($Job -replace 'ResourceJob_','')
+            Write-ARICacheMemoryCheckpoint -Stage 'before-receive-job' -ModuleName $NewJobName
             $TempJob = Receive-Job -Name $Job
+            Write-ARICacheMemoryCheckpoint -Stage 'after-receive-job' -ModuleName $NewJobName
             $tempJobHasValues = $false
             if ($null -ne $TempJob) {
                 if ($TempJob -is [System.Collections.IDictionary]) {
@@ -75,10 +95,12 @@ function Build-ARICacheFiles {
                     [System.GC]::WaitForPendingFinalizers()
                     [System.GC]::Collect()
                     $jobObjectToWrite | ConvertTo-Json -Depth $jsonDepth -Compress | Set-Content -Path $JobFileName -Encoding UTF8
+                    Write-ARICacheMemoryCheckpoint -Stage 'after-cache-write' -ModuleName $NewJobName
                     Remove-Variable -Name jobObjectToWrite -ErrorAction SilentlyContinue
                     [System.GC]::Collect()
                     [System.GC]::WaitForPendingFinalizers()
                     [System.GC]::Collect()
+                    Write-ARICacheMemoryCheckpoint -Stage 'after-cache-write-gc' -ModuleName $NewJobName
                 }
             elseif ($NewJobName -eq 'AI')
                 {
@@ -87,9 +109,15 @@ function Build-ARICacheFiles {
                     $JobFileName = Join-Path $DefaultPath 'ReportCache' $JobJSONName
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Creating empty AI cache file: '+ $JobFileName)
                     '[]' | Set-Content -Path $JobFileName -Encoding UTF8
+                    Write-ARICacheMemoryCheckpoint -Stage 'after-empty-cache-write' -ModuleName $NewJobName
                 }
             Remove-Job -Name $Job
             Remove-Variable -Name TempJob -ErrorAction SilentlyContinue
+            Remove-Variable -Name tempJobHasValues, JobJSONName, JobFileName, jsonDepth, NewJobName -ErrorAction SilentlyContinue
+            [System.GC]::Collect()
+            [System.GC]::WaitForPendingFinalizers()
+            [System.GC]::Collect()
+            Write-ARICacheMemoryCheckpoint -Stage 'after-job-cleanup'
 
             $Counter++
 

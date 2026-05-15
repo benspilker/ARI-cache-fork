@@ -20,6 +20,24 @@ Authors: Claudio Merola
 function Start-ARIProcessJob {
     Param($Resources, $Retirements, $Subscriptions, $DefaultPath, $Heavy, $InTag, $Unsupported)
 
+    function Write-ARIModuleMemoryCheckpoint {
+        param(
+            [string]$Stage,
+            [string]$ModuleName = ''
+        )
+        try {
+            $proc = Get-Process -Id $PID -ErrorAction Stop
+            $wsMb = [math]::Round(($proc.WorkingSet64 / 1MB), 2)
+            $privateMb = [math]::Round(($proc.PrivateMemorySize64 / 1MB), 2)
+            $virtualMb = [math]::Round(($proc.VirtualMemorySize64 / 1MB), 2)
+            $moduleSuffix = if ([string]::IsNullOrWhiteSpace($ModuleName)) { '' } else { " module=$ModuleName" }
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss') + ' - ' + "[MEMCHK] stage=$Stage$moduleSuffix ws_mb=$wsMb private_mb=$privateMb virtual_mb=$virtualMb")
+        } catch {
+            $moduleSuffix = if ([string]::IsNullOrWhiteSpace($ModuleName)) { '' } else { " module=$ModuleName" }
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss') + ' - ' + "[MEMCHK] stage=$Stage$moduleSuffix failed=$($_.Exception.Message)")
+        }
+    }
+
     Write-Progress -activity 'Azure Inventory' -Status "22% Complete." -PercentComplete 22 -CurrentOperation "Creating Jobs to Process Data.."
 
     # PATCHED: Limit concurrent jobs for Windmill memory constraints
@@ -74,6 +92,7 @@ function Start-ARIProcessJob {
     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Converting Resource data to JSON for Jobs')
     $ResourcesJsonPath = Join-Path $DefaultPath ("ari-resources-" + [guid]::NewGuid().ToString("N") + ".json")
     $Resources | ConvertTo-Json -Depth 40 -Compress | Set-Content -Path $ResourcesJsonPath -Encoding UTF8
+    Write-ARIModuleMemoryCheckpoint -Stage 'after-resources-json-written'
 
     Remove-Variable -Name Resources
     Clear-ARIMemory
@@ -87,6 +106,7 @@ function Start-ARIProcessJob {
             $ModuleName = $ModuleFolder.Name
             $ModuleFiles = Get-ChildItem -Path $ModulePath
 
+            Write-ARIModuleMemoryCheckpoint -Stage 'before-module-job-start' -ModuleName $ModuleName
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Creating Job: '+$ModuleName)
 
             $c = (($JobLoop / $TotalFolders) * 100)
@@ -221,9 +241,11 @@ function Start-ARIProcessJob {
                 $Hashtable
 
             } -ArgumentList $ModuleFiles, $PSScriptRoot, $Subscriptions, $InTag, $JobResourcesPayloadPath , $Retirements, 'Processing', $null, $null, $null, $Unsupported | Out-Null
+            Write-ARIModuleMemoryCheckpoint -Stage 'after-module-job-start' -ModuleName $ModuleName
 
         if($JobLoop -eq $EnvSizeLooper)
             {
+                Write-ARIModuleMemoryCheckpoint -Stage 'before-wait-resource-batch'
                 Write-Host 'Waiting Batch Jobs' -ForegroundColor Cyan -NoNewline
                 Write-Host '. This step may take several minutes to finish' -ForegroundColor Cyan
 
@@ -242,6 +264,7 @@ function Start-ARIProcessJob {
                 }
 
                 Wait-ARIJob -JobNames $InterJobNames -JobType 'Resource Batch' -LoopTime 5
+                Write-ARIModuleMemoryCheckpoint -Stage 'after-wait-resource-batch'
 
                 $JobNames = Get-Job | Where-Object {
                         $_ -and
@@ -256,6 +279,11 @@ function Start-ARIProcessJob {
                 }
 
                 Build-ARICacheFiles -DefaultPath $DefaultPath -JobNames $JobNames
+                Write-ARIModuleMemoryCheckpoint -Stage 'after-build-cache-files'
+                [System.GC]::Collect()
+                [System.GC]::WaitForPendingFinalizers()
+                [System.GC]::Collect()
+                Write-ARIModuleMemoryCheckpoint -Stage 'after-post-build-gc'
 
                 $JobLoop = 0
             }
