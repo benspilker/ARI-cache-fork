@@ -28,6 +28,21 @@ function Start-ARIExtraReports {
         return $false
     }
 
+    function Get-WorkingSetMB {
+        try { return [Math]::Round(([System.Diagnostics.Process]::GetCurrentProcess().WorkingSet64 / 1MB), 2) } catch { return -1 }
+    }
+
+    function Invoke-PolicyMemoryCleanup {
+        try {
+            [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
+            [System.GC]::WaitForPendingFinalizers()
+            [System.GC]::Collect([System.GC]::MaxGeneration, [System.GCCollectionMode]::Forced, $true)
+            Clear-ARIMemory
+        } catch {
+            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[POLICY][MEMCHK] Cleanup warning: ' + $_.Exception.Message)
+        }
+    }
+
     Write-Progress -activity 'Azure Inventory' -Status "70% Complete." -PercentComplete 70 -CurrentOperation "Reporting Extra Resources.."
 
     <################################################ QUOTAS #######################################################>
@@ -212,17 +227,34 @@ function Start-ARIExtraReports {
         $hasRawPolicyData = $false
         $useLitePolicyDefs = $false
         $policyCacheData = $null
+        $policyAssignSourcePath = $null
+        $policyAssignSourceSizeMB = 0
         # Prefer split policy files if present (low-memory loading)
         if ($null -ne $reportCacheDir -and (Test-Path $reportCacheDir)) {
+            $runtimeAssignPath = $env:ARI_POLICY_ASSIGN_PATH
+            $splitAssignLitePath = Join-Path $reportCacheDir "PolicyAssignLite.json"
             $splitAssignPath = Join-Path $reportCacheDir "PolicyAssign.json"
             $splitDefLitePath = Join-Path $reportCacheDir "PolicyDefLite.json"
             $splitSetDefLitePath = Join-Path $reportCacheDir "PolicySetDefLite.json"
             $splitDefPath = Join-Path $reportCacheDir "PolicyDef.json"
             $splitSetDefPath = Join-Path $reportCacheDir "PolicySetDef.json"
-            if ((Test-Path $splitAssignPath) -or (Test-Path $splitDefLitePath) -or (Test-Path $splitSetDefLitePath)) {
+            if ((-not [string]::IsNullOrWhiteSpace($runtimeAssignPath) -and (Test-Path $runtimeAssignPath)) -or (Test-Path $splitAssignLitePath) -or (Test-Path $splitAssignPath) -or (Test-Path $splitDefLitePath) -or (Test-Path $splitSetDefLitePath)) {
                 try {
-                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found split PolicyAssign + Lite PolicyDef/PolicySetDef files - loading raw policy data')
-                    $splitPolicyAssign = if (Test-Path $splitAssignPath) { Get-Content $splitAssignPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } else { @{ policyAssignments = @() } }
+                    $assignPathUsed = $null
+                    if (-not [string]::IsNullOrWhiteSpace($runtimeAssignPath) -and (Test-Path $runtimeAssignPath)) {
+                        $assignPathUsed = $runtimeAssignPath
+                    } elseif (Test-Path $splitAssignLitePath) {
+                        $assignPathUsed = $splitAssignLitePath
+                    } else {
+                        $assignPathUsed = $splitAssignPath
+                    }
+                    $policyAssignSourcePath = $assignPathUsed
+                    if (Test-Path $assignPathUsed) {
+                        $policyAssignSourceSizeMB = [Math]::Round((Get-Item $assignPathUsed).Length / 1MB, 2)
+                    }
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found split policy files - loading PolicyAssign from ' + [System.IO.Path]::GetFileName($assignPathUsed) + ' with lite defs/sets')
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[POLICY][INPUT] source=' + [System.IO.Path]::GetFileName($assignPathUsed) + ' sizeMB=' + $policyAssignSourceSizeMB)
+                    $splitPolicyAssign = if (Test-Path $assignPathUsed) { Get-Content $assignPathUsed -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } else { @{ policyAssignments = @() } }
                     $splitPolicyDef = if (Test-Path $splitDefLitePath) { Get-Content $splitDefLitePath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } else { @() }
                     $splitPolicySetDef = if (Test-Path $splitSetDefLitePath) { Get-Content $splitSetDefLitePath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } else { @() }
                     $policyCacheData = [PSCustomObject]@{
@@ -232,13 +264,18 @@ function Start-ARIExtraReports {
                     }
                     $hasRawPolicyData = $true
                     $useLitePolicyDefs = $true
-                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Loaded split PolicyAssign + Lite PolicyDef/PolicySetDef for Policy job processing')
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Loaded split policy assignment + lite defs/sets for Policy job processing')
                 } catch {
-                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error loading split policy lite files: ' + $_.Exception.Message)
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[POLICY][FAILURE][INPUT_LOAD] Error loading split policy lite files: ' + $_.Exception.Message)
                 }
             } elseif ((Test-Path $splitAssignPath) -or (Test-Path $splitDefPath) -or (Test-Path $splitSetDefPath)) {
                 try {
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Found split Policy*.json files - loading raw policy data')
+                    $policyAssignSourcePath = $splitAssignPath
+                    if (Test-Path $splitAssignPath) {
+                        $policyAssignSourceSizeMB = [Math]::Round((Get-Item $splitAssignPath).Length / 1MB, 2)
+                    }
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[POLICY][INPUT] source=' + [System.IO.Path]::GetFileName($splitAssignPath) + ' sizeMB=' + $policyAssignSourceSizeMB)
                     $splitPolicyAssign = if (Test-Path $splitAssignPath) { Get-Content $splitAssignPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } else { @{ policyAssignments = @() } }
                     $splitPolicyDef = if (Test-Path $splitDefPath) { Get-Content $splitDefPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } else { @() }
                     $splitPolicySetDef = if (Test-Path $splitSetDefPath) { Get-Content $splitSetDefPath -Raw -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop } else { @() }
@@ -250,7 +287,7 @@ function Start-ARIExtraReports {
                     $hasRawPolicyData = $true
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Loaded split PolicyAssign/PolicyDef/PolicySetDef for Policy job processing')
                 } catch {
-                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error loading split policy files: ' + $_.Exception.Message)
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[POLICY][FAILURE][INPUT_LOAD] Error loading split policy files: ' + $_.Exception.Message)
                 }
             }
         }
@@ -403,7 +440,16 @@ function Start-ARIExtraReports {
                 Write-Debug "  Warning: Pre-Policy memory cleanup had issues: $_"
             }
             
-            Build-ARIPolicyReport -File $File -Pol $Pol -TableStyle $TableStyle
+            if ($env:ARI_POLICY_DEFERRED -eq '1') {
+                Write-Host "  [POLICY][DEFERRED] Skipping Policy sheet generation: $($env:ARI_POLICY_DEFERRED_REASON)" -ForegroundColor Yellow
+            } else {
+                try {
+                    Build-ARIPolicyReport -File $File -Pol $Pol -TableStyle $TableStyle
+                } catch {
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[POLICY][FAILURE][EXCEL_WRITE] ' + $_.Exception.Message)
+                    throw
+                }
+            }
             
             # Cleanup after Policy sheet generation
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Running memory cleanup after Policy sheet generation.')
@@ -702,6 +748,27 @@ function Start-ARIExtraReports {
                             $PolicyAssignRaw = @{ policyAssignments = @() }
                         }
                         
+                        $policyAssignItems = @()
+                        if ($PolicyAssignRaw -is [PSCustomObject] -or $PolicyAssignRaw -is [System.Collections.Hashtable]) {
+                            if (Test-KeyOrProperty $PolicyAssignRaw 'policyAssignments') {
+                                $vals = if ($PolicyAssignRaw -is [PSCustomObject]) { $PolicyAssignRaw.policyAssignments } else { $PolicyAssignRaw['policyAssignments'] }
+                                if ($vals -is [System.Array]) { $policyAssignItems = $vals } elseif ($null -ne $vals) { $policyAssignItems = @($vals) }
+                            }
+                        } elseif ($PolicyAssignRaw -is [System.Array]) {
+                            $policyAssignItems = $PolicyAssignRaw
+                        } elseif ($null -ne $PolicyAssignRaw) {
+                            $policyAssignItems = @($PolicyAssignRaw)
+                        }
+
+                        $policyChunkSize = 200
+                        if ($env:ARI_POLICY_CHUNK_SIZE -as [int]) { $policyChunkSize = [Math]::Max(1, [int]$env:ARI_POLICY_CHUNK_SIZE) }
+                        $policyMaxWsMB = 1550
+                        if ($env:ARI_POLICY_MAX_WORKINGSET_MB -as [int]) { $policyMaxWsMB = [Math]::Max(256, [int]$env:ARI_POLICY_MAX_WORKINGSET_MB) }
+                        $policyDeferred = $false
+                        $policyDeferredReason = $null
+                        $totalAssignments = $policyAssignItems.Count
+                        $totalChunks = if ($totalAssignments -gt 0) { [Math]::Ceiling($totalAssignments / [double]$policyChunkSize) } else { 1 }
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[POLICY][DIAG] assignSource=' + $(if ($policyAssignSourcePath) { $policyAssignSourcePath } else { 'unknown' }) + ' sizeMB=' + $policyAssignSourceSizeMB + ' assignments=' + $totalAssignments + ' chunkSize=' + $policyChunkSize + ' chunks=' + $totalChunks + ' wsMB=' + (Get-WorkingSetMB))
                         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Calling Start-ARIPolicyJob directly with ' + $SubsForPolicy.Count + ' subscription(s)')
                         $policyAssignType = $null
                         try {
@@ -711,20 +778,61 @@ function Start-ARIExtraReports {
                         }
                         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'PolicyAssign structure: ' + $policyAssignType + ', PolicyDef count: ' + $PolicyDefRaw.Count + ', PolicySetDef count: ' + $PolicySetDefRaw.Count)
                         try {
-                            $Pol = Start-ARIPolicyJob -Subscriptions $SubsForPolicy -PolicySetDef $PolicySetDefRaw -PolicyAssign $PolicyAssignRaw -PolicyDef $PolicyDefRaw
+                            $Pol = @()
+                            if ($totalAssignments -le 0) {
+                                $Pol = Start-ARIPolicyJob -Subscriptions $SubsForPolicy -PolicySetDef $PolicySetDefRaw -PolicyAssign $PolicyAssignRaw -PolicyDef $PolicyDefRaw
+                            } else {
+                                for ($chunkIndex = 0; $chunkIndex -lt $totalChunks; $chunkIndex++) {
+                                    $chunkStart = $chunkIndex * $policyChunkSize
+                                    $chunkEnd = [Math]::Min($chunkStart + $policyChunkSize - 1, $totalAssignments - 1)
+                                    $chunkCount = $chunkEnd - $chunkStart + 1
+                                    $chunkAssign = @($policyAssignItems[$chunkStart..$chunkEnd])
+                                    $chunkWrapper = @{ policyAssignments = $chunkAssign }
+                                    $chunkStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
+                                    $wsBefore = Get-WorkingSetMB
+                                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[POLICY][CHUNK] index=' + ($chunkIndex + 1) + '/' + $totalChunks + ' assignments=' + $chunkCount + ' wsBeforeMB=' + $wsBefore)
+                                    $chunkPol = Start-ARIPolicyJob -Subscriptions $SubsForPolicy -PolicySetDef $PolicySetDefRaw -PolicyAssign $chunkWrapper -PolicyDef $PolicyDefRaw
+                                    if ($null -ne $chunkPol) {
+                                        if ($chunkPol -is [System.Array]) { $Pol += $chunkPol } else { $Pol += @($chunkPol) }
+                                    }
+                                    $chunkStopwatch.Stop()
+                                    $wsAfter = Get-WorkingSetMB
+                                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[POLICY][CHUNK] index=' + ($chunkIndex + 1) + '/' + $totalChunks + ' elapsedMs=' + $chunkStopwatch.ElapsedMilliseconds + ' wsAfterMB=' + $wsAfter + ' outRows=' + $(if ($null -eq $chunkPol) { 0 } elseif ($chunkPol -is [System.Array]) { $chunkPol.Count } else { 1 }))
+                                    Remove-Variable chunkPol,chunkAssign,chunkWrapper -ErrorAction SilentlyContinue
+                                    Invoke-PolicyMemoryCleanup
+                                    if ($wsAfter -ge $policyMaxWsMB -and $chunkIndex -lt ($totalChunks - 1)) {
+                                        $policyDeferred = $true
+                                        $policyDeferredReason = "working_set_mb_${wsAfter}_exceeds_threshold_${policyMaxWsMB}_during_chunk_$($chunkIndex + 1)"
+                                        Write-Host "  [POLICY][DEFERRED] $policyDeferredReason" -ForegroundColor Yellow
+                                        break
+                                    }
+                                }
+                            }
                             if ($null -eq $Pol) {
                                 $Pol = @()
                             } elseif ($Pol -isnot [System.Array]) {
                                 $Pol = @($Pol)
                             }
+                            if ($policyDeferred) {
+                                $env:ARI_POLICY_DEFERRED = '1'
+                                $env:ARI_POLICY_DEFERRED_REASON = $policyDeferredReason
+                                $env:ARI_POLICY_DEFERRED_STAGE = 'policy_transform_chunked'
+                                $Pol = @()
+                            }
                             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Start-ARIPolicyJob returned ' + $Pol.Count + ' Policy record(s)')
                         } catch {
-                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error calling Start-ARIPolicyJob: ' + $_.Exception.Message)
+                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[POLICY][FAILURE][TRANSFORM] Error calling Start-ARIPolicyJob: ' + $_.Exception.Message)
                             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Stack trace: ' + $_.ScriptStackTrace)
+                            $env:ARI_POLICY_DEFERRED = '1'
+                            $env:ARI_POLICY_DEFERRED_REASON = "transform_exception: " + $_.Exception.Message
+                            $env:ARI_POLICY_DEFERRED_STAGE = 'policy_transform_exception'
                             $Pol = @()
                         }
                     } catch {
-                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Error processing raw Policy data directly: ' + $_.Exception.Message)
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[POLICY][FAILURE][TRANSFORM] Error processing raw Policy data directly: ' + $_.Exception.Message)
+                        $env:ARI_POLICY_DEFERRED = '1'
+                        $env:ARI_POLICY_DEFERRED_REASON = "raw_policy_processing_exception: " + $_.Exception.Message
+                        $env:ARI_POLICY_DEFERRED_STAGE = 'policy_raw_processing_exception'
                         $Pol = @()
                     }
                 }
@@ -864,7 +972,16 @@ function Start-ARIExtraReports {
                     Write-Debug "  Warning: Memory cleanup had issues: $_"
                 }
 
-                Build-ARIPolicyReport -File $File -Pol $Pol -TableStyle $TableStyle
+                if ($env:ARI_POLICY_DEFERRED -eq '1') {
+                    Write-Host "  [POLICY][DEFERRED] Skipping Policy sheet generation: $($env:ARI_POLICY_DEFERRED_REASON)" -ForegroundColor Yellow
+                } else {
+                    try {
+                        Build-ARIPolicyReport -File $File -Pol $Pol -TableStyle $TableStyle
+                    } catch {
+                        Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[POLICY][FAILURE][EXCEL_WRITE] ' + $_.Exception.Message)
+                        throw
+                    }
+                }
                 
                 # Cleanup after Policy sheet generation
                 Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Running memory cleanup after Policy sheet generation.')
