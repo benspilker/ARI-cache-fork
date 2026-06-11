@@ -274,6 +274,29 @@ function Start-ARIAdvisoryJob {
     } elseif ($tmp -isnot [System.Array]) {
         $tmp = @($tmp)
     }
+
+    # Deduplicate Advisor recommendations based on ALL columns dynamically
+    # Azure Advisor API can return duplicate rows for the same recommendation
+    if ($tmp.Count -gt 0) {
+        $seen = @{}
+        $unique = @()
+        # Get column names dynamically from first item
+        $columns = $tmp[0].PSObject.Properties.Name
+        foreach ($item in $tmp) {
+            # Build key from all available columns dynamically
+            $keyParts = @()
+            foreach ($col in $columns) {
+                $keyParts += [string]$item.$col
+            }
+            $key = ($keyParts -join '|')
+            if (-not $seen.ContainsKey($key)) {
+                $seen[$key] = $true
+                $unique += $item
+            }
+        }
+        $tmp = $unique
+    }
+
     $tmp
 }
 
