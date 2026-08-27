@@ -758,7 +758,7 @@ function Build-ARIExcelChart {
         $P5Name = 'Virtual Machines'
         $PTParams = @{
             PivotTableName          = "P5"
-            Address                 = $excel.Overview.cells["CL7"] # top-left corner of the table
+            Address                 = $excel.Overview.cells["CL6"] # top-left corner of the table (was CL7; moved to CL6 to avoid overlap with P4 at CF5)
             SourceWorkSheet         = $VirtualMachinesWS
             PivotRows               = @("VM Size")
             PivotData               = @{"Resource U" = "Sum" }
@@ -787,7 +787,7 @@ function Build-ARIExcelChart {
         $P5Name = 'Virtual Networks'
         $PTParams = @{
             PivotTableName          = "P5"
-            Address                 = $excel.Overview.cells["CL7"] # top-left corner of the table
+            Address                 = $excel.Overview.cells["CL6"] # top-left corner of the table (was CL7; moved to CL6 to avoid overlap with P4 at CF5)
             SourceWorkSheet         = $VirtualNetworksWS
             PivotRows               = @("Name")
             PivotData               = @{"Available IPs" = "Sum" }
