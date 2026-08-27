@@ -712,7 +712,26 @@ function Build-ARIExcelChart {
     else {
         # Safely check if Disks worksheet exists before accessing
         $DisksWS = $Excel.Workbook.Worksheets | Where-Object { $null -ne $_ -and $null -ne $_.Name -and $_.Name -eq 'Disks' } | Select-Object -First 1
+        # Guard against empty-pivot-table overlap with P5: skip P4 when the Disks sheet
+        # has no usable data rows (the sheet is typically just a placeholder URL cell).
+        # An empty pivot stub at CF5 produces a default footprint that collides with P5's
+        # page-filter dropdowns, causing Excel to raise:
+        #   "We couldn't complete the action for the PivotTable 'P4' ... already a PivotTable 'P5' there."
+        $disksHasUsableData = $false
         if ($null -ne $DisksWS) {
+            try {
+                $disksRowCount = 0
+                if ($null -ne $DisksWS.Dimension) {
+                    $disksRowCount = $DisksWS.Dimension.Rows
+                }
+                # Need >1 row to have at least a header plus one data row.
+                # Disks is commonly a 1-row placeholder (Microsoft docs URL only).
+                $disksHasUsableData = ($disksRowCount -gt 1)
+            } catch {
+                $disksHasUsableData = $false
+            }
+        }
+        if (($null -ne $DisksWS) -and $disksHasUsableData) {
             $sourceRange = Get-PivotTableSourceRange -Worksheet $DisksWS
             $P4Name = 'VM Disks'
             $PTParams = @{
