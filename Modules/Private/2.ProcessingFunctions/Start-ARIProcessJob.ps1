@@ -170,9 +170,20 @@ function Start-ARIProcessJob {
                         }
                     }
 
-                    $aiResources | ConvertTo-Json -Depth 20 -Compress | Set-Content -Path $aiResourcesPayloadPath -Encoding UTF8
+                    # ARI_AI_SCOPE_FILE_GUARD: always emit a valid JSON file, even when the AI
+                    # scope filter matched zero resources. In PowerShell 7+, piping an empty
+                    # array to ConvertTo-Json -Compress can return $null / empty string,
+                    # which causes Set-Content to skip file creation entirely. The receiving
+                    # AI job then fails with "Cannot find path 'ari-resources-ai-*.json'".
+                    $aiJsonPayload = if ($null -ne $aiResources -and @($aiResources).Count -gt 0) {
+                        @($aiResources) | ConvertTo-Json -Depth 20 -Compress
+                    } else {
+                        '[]'
+                    }
+                    if ([string]::IsNullOrEmpty($aiJsonPayload)) { $aiJsonPayload = '[]' }
+                    Set-Content -Path $aiResourcesPayloadPath -Value $aiJsonPayload -Encoding UTF8 -ErrorAction Stop
                     $JobResourcesPayloadPath = $aiResourcesPayloadPath
-                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[PATCHED] AI resource scope applied: '+$($aiResources.Count)+' item(s) from total '+$($allResources.Count))
+                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[PATCHED] AI resource scope applied: '+(@($aiResources).Count)+' item(s) from total '+(@($allResources).Count)+' (payload_bytes='+$aiJsonPayload.Length+')')
                 } catch {
                     Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[PATCHED] AI resource scope fallback to full payload due to error: '+$_.Exception.Message)
                     $JobResourcesPayloadPath = $ResourcesJsonPath
