@@ -111,7 +111,11 @@ function Build-ARICacheFiles {
                     '[]' | Set-Content -Path $JobFileName -Encoding UTF8
                     Write-ARICacheMemoryCheckpoint -Stage 'after-empty-cache-write' -ModuleName $NewJobName
                 }
-            Remove-Job -Name $Job
+            # ARI_REMOVE_JOB_FORCE: Start-ThreadJob stays in 'Completed' state after Receive-Job
+            # (unlike Start-Job which auto-transitions to 'Finished'). Without -Force, Remove-Job
+            # fails with "job is not finished" and the job lingers in the list, leaking ~30-80 MB
+            # of runspace + module state per module. Add -Force to actually reclaim memory.
+            Remove-Job -Name $Job -Force
             Remove-Variable -Name TempJob -ErrorAction SilentlyContinue
             Remove-Variable -Name tempJobHasValues, JobJSONName, JobFileName, jsonDepth, NewJobName -ErrorAction SilentlyContinue
             [System.GC]::Collect()
