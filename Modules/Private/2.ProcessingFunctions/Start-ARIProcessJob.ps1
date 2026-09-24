@@ -190,7 +190,7 @@ function Start-ARIProcessJob {
                 }
             }
 
-            Start-Job -Name ('ResourceJob_'+$ModuleName) -ScriptBlock {
+            Start-ThreadJob -Name ('ResourceJob_'+$ModuleName) -ScriptBlock {
 
                 $ModuleFiles = $($args[0])
                 $Subscriptions = $($args[2])
