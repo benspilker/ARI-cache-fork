@@ -178,14 +178,7 @@ function Start-ARIExcelJob {
                     $ModuleResourceCount = 0
                     if ($null -ne $SmaResources) {
                         if ($SmaResources -is [System.Array]) {
-                            # FIX (blank Disks sheet): PowerShell's ConvertFrom-Json '[]' quirk
-                            # deserializes empty JSON arrays as @($null) - a 1-element array
-                            # containing $null. Counting raw .Count treats that as 1 resource
-                            # and the module's Reporting branch runs with no real data,
-                            # producing a phantom sheet (e.g. empty Disks with VMDiskT_0 table
-                            # and only the find-unattached-disks hyperlink in F1).
-                            # Filter out nulls first so @($null) evaluates to 0.
-                            $ModuleResourceCount = @($SmaResources | Where-Object { $null -ne $_ }).Count
+                            $ModuleResourceCount = $SmaResources.Count
                         } elseif ($SmaResources -is [System.Collections.Hashtable]) {
                             $ModuleResourceCount = $SmaResources.Count
                         } elseif ($SmaResources -is [PSCustomObject]) {
