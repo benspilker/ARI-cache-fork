@@ -1,4 +1,4 @@
-﻿<#
+<#
 .Synopsis
 Inventory for Azure Disk
 
@@ -29,6 +29,106 @@ If ($Task -eq 'Processing')
     <######### Insert the resource extraction here ########>
 
         $disk = $Resources | Where-Object {$_.TYPE -eq 'microsoft.compute/disks'}
+
+        # Lite-mode / no-standalone-disks fallback: synthesize disk records from VM storageProfile.
+        # When the customer's subscription has VMs but no standalone `microsoft.compute/disks`
+        # resources (common for VMs using managed-by-VM disks), the original $disk above is empty.
+        # In that case, iterate `microsoft.compute/virtualmachines` and emit synthetic disk-shaped
+        # records from each VM's storageProfile.osDisk and storageProfile.dataDisks. These then go
+        # through the same downstream `foreach ($1 in $disk)` processing loop as standalone disks.
+        # Skipped entirely when any standalone disks were already found (preserves real data).
+        if (-not $disk) {
+            $vms = $Resources | Where-Object {$_.TYPE -eq 'microsoft.compute/virtualmachines'}
+            $disk = @(foreach ($vm in $vms) {
+                $sp = $vm.PROPERTIES.storageProfile
+                if (-not $sp) { continue }
+
+                # Common VM-derived fields reused for both OS disk and data disks
+                $vmId      = $vm.id
+                $vmRG      = $vm.RESOURCEGROUP
+                $vmLoc     = $vm.LOCATION
+                $vmSubId   = $vm.subscriptionId
+                $vmName    = $vm.NAME
+                $vmZone    = $vm.ZONES
+                $vmTags    = $vm.tags
+                # HyperVGeneration derived from VM hardware profile (V2 SKU suffixes indicate V2)
+                $vmGen     = if ($vm.PROPERTIES.hardwareProfile.vmSize -match 'V2$') { 'V2' } else { 'V1' }
+
+                # OS disk
+                if ($sp.osDisk) {
+                    $os = $sp.osDisk
+                    $osDiskId   = if ($os.managedDisk.id) { $os.managedDisk.id } else { "$vmId/osDisk" }
+                    $osDiskName = if ($os.name) { $os.name } else { "$vmName-osdisk" }
+                    $osStorage  = if ($os.managedDisk.storageAccountType) { $os.managedDisk.storageAccountType } else { $null }
+                    $osEncType  = if ($os.encryption.type) { $os.encryption.type } else { $null }
+                    [pscustomobject]@{
+                        TYPE              = 'microsoft.compute/disks'
+                        id                = $osDiskId
+                        NAME              = $osDiskName
+                        RESOURCEGROUP     = $vmRG
+                        LOCATION          = $vmLoc
+                        MANAGEDBY         = $vmId
+                        ZONES             = $vmZone
+                        SKU               = @{ Name = $osStorage }
+                        PROPERTIES        = @{
+                            timeCreated         = $null
+                            diskState           = 'Attached'
+                            diskSizeGB          = $os.diskSizeGB
+                            tier                = $null
+                            diskIOPSReadWrite   = $null
+                            diskMBPSReadWrite   = $null
+                            publicNetworkAccess = $null
+                            networkAccessPolicy = $null
+                            supportsHibernation = $null
+                            encryption          = @{ type = $osEncType }
+                            osType              = $os.osType
+                            maxShares           = $null
+                            dataAccessAuthMode  = $null
+                            hyperVGeneration    = $vmGen
+                        }
+                        tags              = $vmTags
+                        subscriptionId    = $vmSubId
+                    }
+                }
+
+                # Data disks
+                if ($sp.dataDisks) {
+                    foreach ($dd in $sp.dataDisks) {
+                        $ddDiskId   = if ($dd.managedDisk.id) { $dd.managedDisk.id } else { "$vmId/dataDisks/$($dd.lun)" }
+                        $ddDiskName = if ($dd.name) { $dd.name } else { "$vmName-datadisk-$($dd.lun)" }
+                        $ddStorage  = if ($dd.managedDisk.storageAccountType) { $dd.managedDisk.storageAccountType } else { $null }
+                        [pscustomobject]@{
+                            TYPE              = 'microsoft.compute/disks'
+                            id                = $ddDiskId
+                            NAME              = $ddDiskName
+                            RESOURCEGROUP     = $vmRG
+                            LOCATION          = $vmLoc
+                            MANAGEDBY         = $vmId
+                            ZONES             = $vmZone
+                            SKU               = @{ Name = $ddStorage }
+                            PROPERTIES        = @{
+                                timeCreated         = $null
+                                diskState           = 'Attached'
+                                diskSizeGB          = $dd.diskSizeGB
+                                tier                = $null
+                                diskIOPSReadWrite   = $null
+                                diskMBPSReadWrite   = $null
+                                publicNetworkAccess = $null
+                                networkAccessPolicy = $null
+                                supportsHibernation = $null
+                                encryption          = @{ type = $null }
+                                osType              = $null
+                                maxShares           = $null
+                                dataAccessAuthMode  = $null
+                                hyperVGeneration    = $vmGen
+                            }
+                            tags              = $vmTags
+                            subscriptionId    = $vmSubId
+                        }
+                    }
+                }
+            })
+        }
 
     <######### Insert the resource Process here ########>
 
