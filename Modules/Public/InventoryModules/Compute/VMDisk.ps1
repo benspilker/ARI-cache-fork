@@ -116,7 +116,24 @@ Else
 {
     <######## $SmaResources.(RESOURCE FILE NAME) ##########>
 
-    if($SmaResources)
+    # Guard against phantom-sheet creation (issue: blank Disks sheet in denta009/darli006 reports).
+    # The merged cache can contain arrays of $null entries in two observed shapes:
+    #   1. @($null)              - 1-element array with single null (ConvertFrom-Json '[]' quirk in PS7)
+    #   2. @(null, null, ... )   - N-element array, all null (when Merge-ARICacheFiles concatenates
+    #                              per-batch [null] entries across many batches; seen with 30 nulls
+    #                              in darli006 because VMDisk gets stripped by Lite+SkipVMDetails)
+    # Without this check, `if($SmaResources)` evaluates to TRUE for either shape and Export-Excel
+    # creates an empty Disks sheet (VMDiskT_0 table, no rows). Start-ARIExcelExtraData.ps1 then
+    # paints the find-unattached-disks URL hyperlink into F1 of that empty sheet. Detect any array
+    # whose elements are ALL null (or which is empty) and skip sheet creation in those cases.
+    $hasRealData = $true
+    if ($SmaResources -is [System.Array]) {
+        $hasRealData = $false
+        foreach ($item in $SmaResources) {
+            if ($null -ne $item) { $hasRealData = $true; break }
+        }
+    }
+    if ($hasRealData)
     {
 
         $SheetName = 'Disks'
