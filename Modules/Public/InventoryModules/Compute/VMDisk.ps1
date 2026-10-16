@@ -181,7 +181,7 @@ If ($Task -eq 'Processing')
                             'Retiring Feature'       = $RetiringFeature;
                             'Retiring Date'          = $RetiringDate;
                             'Disk State'             = $data.diskState;
-                            'Associated Resource'    = $1.MANAGEDBY.split('/')[8];
+                            'Associated Resource'    = if ($null -ne $1.MANAGEDBY) { ($1.MANAGEDBY -split '/')[8] } else { $null };
                             'Location'               = $1.LOCATION;
                             'Zone'                   = [string]$1.ZONES;
                             'SKU'                    = $SKU.Name;
