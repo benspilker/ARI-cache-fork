@@ -21,7 +21,21 @@ function Get-AriVMQuotas {
     $Quotas = Foreach($Sub in $Subscriptions)
         {
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Getting VM Quota Details: '+$Sub.name)
-            $Locs = ($Resources | Where-Object {$_.subscriptionId -eq $Sub.id -and $_.Type -in 'microsoft.compute/virtualmachines','microsoft.compute/virtualmachinescalesets'} | Group-Object -Property Location).name
+            # Defensive property access: $Resources is a mix of raw ARG results
+            # (with lowercase .subscriptionId / .Type) and REST API results
+            # (ResourceHealth events, ManagedIdentities, AdvisorScore,
+            # ReservationRecomen) which have different shapes and may not
+            # carry a .subscriptionId property at all. Accessing a missing
+            # property on a PSCustomObject is a terminating error in strict
+            # mode and aborts the entire batch. Guard with PSObject.Properties
+            # before dereferencing, matching the defensive style used elsewhere
+            # in Start-ARIExtractionOrchestration.ps1.
+            $Locs = ($Resources | Where-Object {
+                $hasSub  = $_.PSObject.Properties['subscriptionId']
+                $hasType = $_.PSObject.Properties['Type']
+                if (-not $hasSub -or -not $hasType) { return $false }
+                ($_.subscriptionId -eq $Sub.id) -and ($_.Type -in 'microsoft.compute/virtualmachines','microsoft.compute/virtualmachinescalesets')
+            } | Group-Object -Property Location).name
             if (![string]::IsNullOrEmpty($Locs))
                 {
                     Foreach($Loc in $Locs)
@@ -66,4 +80,4 @@ function Get-AriVMQuotas {
     }
 
     return $VMQuotas
-}
+}

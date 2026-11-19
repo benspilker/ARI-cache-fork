@@ -50,7 +50,19 @@ function Start-ARIExtractionOrchestration {
     $AdvisoryCount = if ($null -ne $Advisories -and $Advisories -is [System.Array]) { [string]$Advisories.Count } elseif ($null -ne $Advisories) { "1" } else { "0" }
     $SecCenterCount = if ($null -ne $Security -and $Security -is [System.Array]) { [string]$Security.Count } elseif ($null -ne $Security) { "1" } else { "0" }
 
-    if(!$SkipAPIs.IsPresent)
+    # Normalize SkipAPIs to handle both [switch] and boolean callers.
+    # Historically this gate was `if(!$SkipAPIs.IsPresent)`, which assumes
+    # $SkipAPIs is a [switch] parameter. The csp wrapper passes boolean
+    # values like SkipAPIs=$false / SkipVMDetails=$true, where .IsPresent
+    # returns $null, so the negation becomes $true and the block always
+    # runs. Match the pattern already used in Get-ARIAPIResources.ps1
+    # (lines 145-152).
+    $shouldSkipAPIs = $false
+    if ($null -ne $SkipAPIs) {
+        if ($SkipAPIs -is [switch]) { $shouldSkipAPIs = $SkipAPIs.IsPresent }
+        else { $shouldSkipAPIs = [bool]$SkipAPIs }
+    }
+    if (-not $shouldSkipAPIs)
         {
             Write-Progress -activity 'Azure Inventory' -Status "12% Complete." -PercentComplete 12 -CurrentOperation "Starting API Extraction.."
             Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'Getting API Resources.')
@@ -112,11 +124,32 @@ function Start-ARIExtractionOrchestration {
         Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'No Policy data collected (PolicyAssign is null)')
     }
 
-    if ($IncludeCosts.IsPresent) {
+    # Normalize IncludeCosts to handle both [switch] and boolean callers.
+    # See SkipAPIs normalization above for rationale.
+    $shouldIncludeCosts = $false
+    if ($null -ne $IncludeCosts) {
+        if ($IncludeCosts -is [switch]) { $shouldIncludeCosts = $IncludeCosts.IsPresent }
+        else { $shouldIncludeCosts = [bool]$IncludeCosts }
+    }
+    if ($shouldIncludeCosts) {
         $Costs = Get-ARICostInventory -Subscriptions $Subscriptions -Days 60 -Granularity 'Monthly'
     }
 
-    if (!$SkipVMDetails.IsPresent)
+    # Normalize SkipVMDetails to handle both [switch] and boolean callers.
+    # The csp wrapper passes SkipVMDetails=$true for batch cache collection
+    # (perf optimization — skip per-sub Get-AzComputeResourceSku and
+    # Get-AzVMUsage calls). With the old `if (!$SkipVMDetails.IsPresent)`
+    # gate, a boolean $true.IsPresent returned $null, so the negation was
+    # $true and the block ran anyway, defeating the optimization AND
+    # triggering the Get-AriVMQuotas crash on API-result objects lacking
+    # .subscriptionId. See the property-existence guard inside
+    # Get-AriVMQuotas.ps1 (defensive $Resources filter).
+    $shouldSkipVMDetails = $false
+    if ($null -ne $SkipVMDetails) {
+        if ($SkipVMDetails -is [switch]) { $shouldSkipVMDetails = $SkipVMDetails.IsPresent }
+        else { $shouldSkipVMDetails = [bool]$SkipVMDetails }
+    }
+    if (-not $shouldSkipVMDetails)
         {
             Write-Host 'Gathering VM Extra Details: ' -NoNewline
             Write-Host 'Quotas' -ForegroundColor Cyan
