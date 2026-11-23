@@ -30,12 +30,23 @@ function Get-AriVMQuotas {
             # mode and aborts the entire batch. Guard with PSObject.Properties
             # before dereferencing, matching the defensive style used elsewhere
             # in Start-ARIExtractionOrchestration.ps1.
-            $Locs = ($Resources | Where-Object {
+            # Null-safe Group-Object access: when the Where-Object filter
+            # eliminates all resources (e.g. subscription has zero VMs/VMSS),
+            # Group-Object returns $null instead of @(). Under Set-StrictMode,
+            # accessing .name on $null throws 'The property 'name' cannot be
+            # found on this object' and aborts the entire batch. Capture the
+            # group first, then null-check before dereferencing.
+            $__VMGroups = $Resources | Where-Object {
                 $hasSub  = $_.PSObject.Properties['subscriptionId']
                 $hasType = $_.PSObject.Properties['Type']
                 if (-not $hasSub -or -not $hasType) { return $false }
                 ($_.subscriptionId -eq $Sub.id) -and ($_.Type -in 'microsoft.compute/virtualmachines','microsoft.compute/virtualmachinescalesets')
-            } | Group-Object -Property Location).name
+            } | Group-Object -Property Location
+            if ($null -ne $__VMGroups) {
+                $Locs = $__VMGroups.name
+            } else {
+                $Locs = $null
+            }
             if (![string]::IsNullOrEmpty($Locs))
                 {
                     Foreach($Loc in $Locs)
@@ -80,4 +91,4 @@ function Get-AriVMQuotas {
     }
 
     return $VMQuotas
-}
+}
