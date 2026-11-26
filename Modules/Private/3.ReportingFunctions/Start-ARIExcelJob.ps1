@@ -20,6 +20,11 @@ Authors: Claudio Merola
 function Start-ARIExcelJob {
     Param($ReportCache, $File, $TableStyle)
 
+    if ([string]::IsNullOrWhiteSpace([string]$TableStyle)) {
+        $TableStyle = 'Light19'
+        Write-Host "[ARI-TABLESTYLE] Missing TableStyle; defaulting to Light19." -ForegroundColor Yellow
+    }
+
     Write-Host "[DEBUG] Start-ARIExcelJob: Starting with ReportCache=$ReportCache, File=$File" -ForegroundColor Magenta
     
     try {
