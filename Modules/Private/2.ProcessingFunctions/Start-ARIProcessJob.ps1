@@ -125,9 +125,36 @@ function Start-ARIProcessJob {
             $__rCount = 1
         }
     }
-    $__writer = [System.IO.StreamWriter]::new($ResourcesJsonPath, $false, [System.Text.UTF8Encoding]::new($false))
+    # ARI_AI_RESOURCE_SCOPE_V2: build the AI subset in the same pass as the full
+    # resource payload. Avoid reloading the full JSON file into memory just to
+    # filter AI resources (the prior path used Get-Content -Raw | ConvertFrom-Json).
+    $aiResourceTypePrefixes = @(
+        'microsoft.cognitiveservices/accounts',
+        'microsoft.machinelearningservices/workspaces',
+        'microsoft.search/searchservices'
+    )
+    $aiProviderPrefixes = @(
+        'microsoft.cognitiveservices/',
+        'microsoft.machinelearningservices/',
+        'microsoft.search/'
+    )
+    $aiDirectPayloadPath = Join-Path $DefaultPath ("ari-resources-ai-direct-" + [guid]::NewGuid().ToString("N") + ".json")
+    $aiProviderPayloadPath = Join-Path $DefaultPath ("ari-resources-ai-provider-" + [guid]::NewGuid().ToString("N") + ".json")
+    $aiDirectResourceCount = 0
+    $aiProviderResourceCount = 0
+    $__aiDirectFirst = $true
+    $__aiProviderFirst = $true
+
+    $__writer = $null
+    $__aiDirectWriter = $null
+    $__aiProviderWriter = $null
     try {
+        $__writer = [System.IO.StreamWriter]::new($ResourcesJsonPath, $false, [System.Text.UTF8Encoding]::new($false))
+        $__aiDirectWriter = [System.IO.StreamWriter]::new($aiDirectPayloadPath, $false, [System.Text.UTF8Encoding]::new($false))
+        $__aiProviderWriter = [System.IO.StreamWriter]::new($aiProviderPayloadPath, $false, [System.Text.UTF8Encoding]::new($false))
         $__writer.Write('[')
+        $__aiDirectWriter.Write('[')
+        $__aiProviderWriter.Write('[')
         $__first = $true
         if ($__rCount -gt 0) {
             $__chunkCount = [math]::Ceiling($__rCount / $__chunkSize)
@@ -141,6 +168,49 @@ function Start-ARIProcessJob {
                     if (-not $__first) { $__writer.Write(',') }
                     $__writer.Write($__json)
                     $__first = $false
+
+                    $__resourceType = ''
+                    try {
+                        if ($__r.PSObject.Properties['type']) { $__resourceType = [string]$__r.type }
+                        elseif ($__r.PSObject.Properties['TYPE']) { $__resourceType = [string]$__r.TYPE }
+                        elseif ($__r.PSObject.Properties['resourceType']) { $__resourceType = [string]$__r.resourceType }
+                        elseif ($__r.PSObject.Properties['ResourceType']) { $__resourceType = [string]$__r.ResourceType }
+                    } catch {}
+                    $__normalizedResourceType = $__resourceType.Trim().ToLowerInvariant()
+                    $__isDirectAi = $false
+                    $__isProviderAi = $false
+                    if (-not [string]::IsNullOrWhiteSpace($__normalizedResourceType)) {
+                        foreach ($__prefix in $aiResourceTypePrefixes) {
+                            if ($__normalizedResourceType -eq $__prefix -or $__normalizedResourceType.StartsWith($__prefix + '/')) {
+                                $__isDirectAi = $true
+                                break
+                            }
+                        }
+                        foreach ($__providerPrefix in $aiProviderPrefixes) {
+                            if ($__normalizedResourceType.StartsWith($__providerPrefix)) {
+                                $__isProviderAi = $true
+                                break
+                            }
+                        }
+                    }
+                    if ($__isDirectAi -or $__isProviderAi) {
+                        # Match the old AI subset's depth while serializing only
+                        # the selected resource, never the full tenant payload.
+                        $__aiJson = ConvertTo-Json -InputObject $__r -Depth 20 -Compress
+                        if ($__isDirectAi) {
+                            if (-not $__aiDirectFirst) { $__aiDirectWriter.Write(',') }
+                            $__aiDirectWriter.Write($__aiJson)
+                            $__aiDirectFirst = $false
+                            $aiDirectResourceCount++
+                        }
+                        if ($__isProviderAi) {
+                            if (-not $__aiProviderFirst) { $__aiProviderWriter.Write(',') }
+                            $__aiProviderWriter.Write($__aiJson)
+                            $__aiProviderFirst = $false
+                            $aiProviderResourceCount++
+                        }
+                        $__aiJson = $null
+                    }
                     # CRITICAL: drop the heavy reference. After this line, $r is
                     # unreachable (assuming no external refs) and will be collected
                     # at the next GC. This is the step that the old patch got wrong.
@@ -155,10 +225,26 @@ function Start-ARIProcessJob {
             }
         }
         $__writer.Write(']')
+        $__aiDirectWriter.Write(']')
+        $__aiProviderWriter.Write(']')
     } finally {
-        $__writer.Flush()
-        $__writer.Dispose()
+        foreach ($__streamWriter in @($__writer, $__aiDirectWriter, $__aiProviderWriter)) {
+            if ($null -ne $__streamWriter) {
+                try { $__streamWriter.Flush() } catch {}
+                try { $__streamWriter.Dispose() } catch {}
+            }
+        }
     }
+    if ($aiDirectResourceCount -gt 0) {
+        $__aiSelectedPayloadPath = $aiDirectPayloadPath
+        $__aiSelectedResourceCount = $aiDirectResourceCount
+        $__aiSelectionMode = 'direct-type'
+    } else {
+        $__aiSelectedPayloadPath = $aiProviderPayloadPath
+        $__aiSelectedResourceCount = $aiProviderResourceCount
+        $__aiSelectionMode = 'provider-fallback'
+    }
+    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[ARI_AI_RESOURCE_SCOPE_V2] Streamed AI payload selected: mode='+$__aiSelectionMode+' count='+$__aiSelectedResourceCount)
     Write-ARIModuleMemoryCheckpoint -Stage 'after-resources-json-written'
 
     Remove-Variable -Name Resources
@@ -183,78 +269,8 @@ function Start-ARIProcessJob {
             $JobResourcesPayloadPath = $ResourcesJsonPath
             # ARI_AI_RESOURCE_SCOPE_V2: pass AI-relevant resources with robust type matching.
             if ($ModuleName -eq 'AI') {
-                $aiResourceTypePrefixes = @(
-                    'microsoft.cognitiveservices/accounts',
-                    'microsoft.machinelearningservices/workspaces',
-                    'microsoft.search/searchservices'
-                )
-                $aiProviderPrefixes = @(
-                    'microsoft.cognitiveservices/',
-                    'microsoft.machinelearningservices/',
-                    'microsoft.search/'
-                )
-                $aiResourcesPayloadPath = Join-Path $DefaultPath ("ari-resources-ai-" + [guid]::NewGuid().ToString("N") + ".json")
-                try {
-                    $aiResourcesRaw = Get-Content -Path $ResourcesJsonPath -Raw -ErrorAction Stop | ConvertFrom-Json
-                    $allResources = @($aiResourcesRaw)
-                    $aiResources = @($allResources | Where-Object {
-                        $rtype = ''
-                        try {
-                            if ($_.PSObject.Properties['type']) { $rtype = [string]$_.type }
-                            elseif ($_.PSObject.Properties['TYPE']) { $rtype = [string]$_.TYPE }
-                            elseif ($_.PSObject.Properties['resourceType']) { $rtype = [string]$_.resourceType }
-                            elseif ($_.PSObject.Properties['ResourceType']) { $rtype = [string]$_.ResourceType }
-                        } catch {}
-                        if ([string]::IsNullOrWhiteSpace($rtype)) { return $false }
-                        $rtypeNormalized = $rtype.Trim().ToLowerInvariant()
-                        foreach ($prefix in $aiResourceTypePrefixes) {
-                            if ($rtypeNormalized -eq $prefix -or $rtypeNormalized.StartsWith($prefix + '/')) {
-                                return $true
-                            }
-                        }
-                        return $false
-                    })
-
-                    if ($aiResources.Count -eq 0 -and $allResources.Count -gt 0) {
-                        $providerMatches = @($allResources | Where-Object {
-                            $rtype = ''
-                            try {
-                                if ($_.PSObject.Properties['type']) { $rtype = [string]$_.type }
-                                elseif ($_.PSObject.Properties['TYPE']) { $rtype = [string]$_.TYPE }
-                                elseif ($_.PSObject.Properties['resourceType']) { $rtype = [string]$_.resourceType }
-                                elseif ($_.PSObject.Properties['ResourceType']) { $rtype = [string]$_.ResourceType }
-                            } catch {}
-                            if ([string]::IsNullOrWhiteSpace($rtype)) { return $false }
-                            $rtypeNormalized = $rtype.Trim().ToLowerInvariant()
-                            foreach ($providerPrefix in $aiProviderPrefixes) {
-                                if ($rtypeNormalized.StartsWith($providerPrefix)) { return $true }
-                            }
-                            return $false
-                        })
-                        if ($providerMatches.Count -gt 0) {
-                            $aiResources = $providerMatches
-                            Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[PATCHED] AI scope fallback used provider-prefix matches: '+$($aiResources.Count)+' item(s)')
-                        }
-                    }
-
-                    # ARI_AI_SCOPE_FILE_GUARD: always emit a valid JSON file, even when the AI
-                    # scope filter matched zero resources. In PowerShell 7+, piping an empty
-                    # array to ConvertTo-Json -Compress can return $null / empty string,
-                    # which causes Set-Content to skip file creation entirely. The receiving
-                    # AI job then fails with "Cannot find path 'ari-resources-ai-*.json'".
-                    $aiJsonPayload = if ($null -ne $aiResources -and @($aiResources).Count -gt 0) {
-                        @($aiResources) | ConvertTo-Json -Depth 20 -Compress
-                    } else {
-                        '[]'
-                    }
-                    if ([string]::IsNullOrEmpty($aiJsonPayload)) { $aiJsonPayload = '[]' }
-                    Set-Content -Path $aiResourcesPayloadPath -Value $aiJsonPayload -Encoding UTF8 -ErrorAction Stop
-                    $JobResourcesPayloadPath = $aiResourcesPayloadPath
-                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[PATCHED] AI resource scope applied: '+(@($aiResources).Count)+' item(s) from total '+(@($allResources).Count)+' (payload_bytes='+$aiJsonPayload.Length+')')
-                } catch {
-                    Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[PATCHED] AI resource scope fallback to full payload due to error: '+$_.Exception.Message)
-                    $JobResourcesPayloadPath = $ResourcesJsonPath
-                }
+                $JobResourcesPayloadPath = $__aiSelectedPayloadPath
+                Write-Debug ((get-date -Format 'yyyy-MM-dd_HH_mm_ss')+' - '+'[ARI_AI_RESOURCE_SCOPE_V2] AI scope selected: '+$__aiSelectionMode+' ('+$__aiSelectedResourceCount+' item(s))')
             }
 
             Start-Job -Name ('ResourceJob_'+$ModuleName) -ScriptBlock {
